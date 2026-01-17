@@ -1,0 +1,8 @@
+{
+  "name": "Gemini OS - AI Mobile Simulator",
+  "description": "A fully functional simulated mobile phone environment featuring AI-driven chat (WeChat), social media (Weibo), ticketing (Damai), and world-building news. Powered by Gemini for dynamic character interactions and realistic world events.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

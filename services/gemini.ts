@@ -71,6 +71,13 @@ export const generateCharacterResponse = async (
     ? `注: 角色会浏览朋友圈动态，可能知晓最近发生的日常琐事。`
     : `注: 角色从不浏览社交媒体，对朋友圈发生的事情一无所知。`;
 
+  const behavioralTraits = `
+    社交偏好:
+    - 朋友圈发布频率: ${character.momentsFrequency || 'medium'}
+    - 微博发布频率: ${character.weiboFrequency || 'low'}
+    - 主动性: ${character.proactiveTicketing ? '非常主动，会主动发起约会邀约，甚至提到已经买好了票' : '比较被动，通常等待对方发起邀约'}
+  `;
+
   const systemPrompt = `
     你现在扮演一名角色。
     角色名: ${character.name}
@@ -80,6 +87,7 @@ export const generateCharacterResponse = async (
     ${worldAwareness}
     ${personaAwareness}
     ${socialAwareness}
+    ${behavioralTraits}
     你的回复应该是口语化的、符合角色性格的。你可以使用括号表达动作或心理。
     不要以AI的身份说话。保持人设。
   `;

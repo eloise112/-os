@@ -12,6 +12,10 @@ export interface Character {
   perceiveWorldNews?: boolean;
   perceiveSocialMedia?: boolean;
   perceiveUserPersona?: boolean;
+  // Behavioral settings
+  momentsFrequency?: 'none' | 'low' | 'medium' | 'high';
+  weiboFrequency?: 'none' | 'low' | 'medium' | 'high';
+  proactiveTicketing?: boolean;
 }
 
 export interface UserProfile {

@@ -23,6 +23,46 @@ const SUPPORTED_MODELS = [
   { id: 'deepseek-r1-0528', name: 'DeepSeek R1', provider: 'DeepSeek' },
 ];
 
+const ToggleSwitch: React.FC<{ isOn: boolean, onToggle: () => void, label: string, icon: string, color?: string }> = ({ isOn, onToggle, label, icon, color = 'bg-blue-500' }) => (
+  <div className="flex items-center justify-between py-2 px-1">
+    <div className="flex items-center gap-3">
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isOn ? 'bg-opacity-10 ' + color.replace('bg-', 'text-') : 'bg-gray-50 text-gray-400'}`}>
+        <i className={icon}></i>
+      </div>
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+    </div>
+    <button onClick={onToggle} className={`w-11 h-6 rounded-full relative transition-colors duration-200 ${isOn ? color : 'bg-[#e9e9ea]'}`}>
+      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform duration-200 ${isOn ? 'translate-x-5' : 'translate-x-0'}`}></div>
+    </button>
+  </div>
+);
+
+const FrequencySelector: React.FC<{ value: Character['momentsFrequency'], onChange: (v: Character['momentsFrequency']) => void, label: string }> = ({ value = 'none', onChange, label }) => {
+  const options: { id: Character['momentsFrequency'], label: string }[] = [
+    { id: 'none', label: '永不' },
+    { id: 'low', label: '偶尔' },
+    { id: 'medium', label: '经常' },
+    { id: 'high', label: '话痨' }
+  ];
+
+  return (
+    <div className="py-2">
+      <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block mb-2">{label}</label>
+      <div className="flex bg-gray-100 p-1 rounded-xl">
+        {options.map(opt => (
+          <button
+            key={opt.id}
+            onClick={() => onChange(opt.id)}
+            className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${value === opt.id ? 'bg-white shadow-sm text-blue-500' : 'text-gray-500'}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const SettingsApp: React.FC<SettingsAppProps> = ({ 
   characters, setCharacters, world, setWorld, apiConfig, setApiConfig, 
   onRefreshNews, onRefreshHot, onRefreshMoments, onRefreshWeibo, onBack 
@@ -30,6 +70,7 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
   const [activeTab, setActiveTab] = useState<'chars' | 'world' | 'api'>('chars');
   const [loading, setLoading] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [editingChar, setEditingChar] = useState<Partial<Character> | null>(null);
 
   const handleRefresh = async (type: string, fn: () => Promise<void>) => {
     setLoading(type);
@@ -60,6 +101,190 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
   const toggleKeyVisibility = (key: string) => {
     setShowKeys(prev => ({ ...prev, [key]: !prev[key] }));
   };
+
+  const handleStartEdit = (char: Character) => {
+    setEditingChar({ ...char });
+  };
+
+  const handleStartCreate = () => {
+    setEditingChar({
+      id: `char-${Date.now()}`,
+      name: '',
+      avatar: `https://picsum.photos/seed/${Date.now()}/200/200`,
+      background: '',
+      preferences: '',
+      storyline: '',
+      perceiveWorldNews: true,
+      perceiveSocialMedia: true,
+      perceiveUserPersona: true,
+      momentsFrequency: 'medium',
+      weiboFrequency: 'low',
+      proactiveTicketing: false
+    });
+  };
+
+  const handleSaveChar = () => {
+    if (!editingChar || !editingChar.name) return;
+    
+    setCharacters(prev => {
+      const exists = prev.find(c => c.id === editingChar.id);
+      if (exists) {
+        return prev.map(c => c.id === editingChar.id ? (editingChar as Character) : c);
+      } else {
+        return [...prev, editingChar as Character];
+      }
+    });
+    setEditingChar(null);
+  };
+
+  const handleDeleteChar = (id: string) => {
+    if (confirm('确定要删除这个角色吗？相关的聊天记录将无法找回。')) {
+      setCharacters(prev => prev.filter(c => c.id !== id));
+      setEditingChar(null);
+    }
+  };
+
+  if (editingChar) {
+    return (
+      <div className="h-full flex flex-col bg-[#f2f2f7] animate-in slide-in-from-bottom duration-300">
+        <div className="p-4 pt-11 bg-white border-b flex items-center justify-between shrink-0">
+          <button onClick={() => setEditingChar(null)} className="text-[#007aff] font-medium">取消</button>
+          <span className="font-bold text-[17px]">{characters.find(c => c.id === editingChar.id) ? '编辑角色' : '创建角色'}</span>
+          <button onClick={handleSaveChar} className="text-[#007aff] font-bold disabled:opacity-30" disabled={!editingChar.name}>保存</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Avatar Section */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm flex flex-col items-center gap-4">
+            <div className="relative group">
+              <img src={editingChar.avatar} className="w-24 h-24 rounded-2xl object-cover shadow-md border-2 border-white" alt="avatar" />
+              <button 
+                onClick={() => setEditingChar({ ...editingChar, avatar: `https://picsum.photos/seed/${Date.now()}/200/200` })}
+                className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+              >
+                <i className="fas fa-sync-alt text-xs"></i>
+              </button>
+            </div>
+            <div className="w-full space-y-2">
+              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">头像 URL</label>
+              <input 
+                type="text" 
+                value={editingChar.avatar} 
+                onChange={e => setEditingChar({ ...editingChar, avatar: e.target.value })}
+                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-xs outline-none focus:border-blue-300 font-mono"
+                placeholder="https://..."
+              />
+            </div>
+          </div>
+
+          {/* Basic Info Section */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">角色姓名</label>
+              <input 
+                type="text" 
+                value={editingChar.name} 
+                onChange={e => setEditingChar({ ...editingChar, name: e.target.value })}
+                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm font-bold outline-none focus:border-blue-300"
+                placeholder="例如: 沈逸"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">身份背景</label>
+              <textarea 
+                value={editingChar.background} 
+                onChange={e => setEditingChar({ ...editingChar, background: e.target.value })}
+                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300 min-h-[80px]"
+                placeholder="描述角色的社会地位、性格、往事..."
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">偏好/厌恶</label>
+              <textarea 
+                value={editingChar.preferences} 
+                onChange={e => setEditingChar({ ...editingChar, preferences: e.target.value })}
+                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300 min-h-[60px]"
+                placeholder="喜欢什么，讨厌什么..."
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">当前剧情线</label>
+              <textarea 
+                value={editingChar.storyline} 
+                onChange={e => setEditingChar({ ...editingChar, storyline: e.target.value })}
+                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300 min-h-[60px]"
+                placeholder="目前正处于什么样的关系中..."
+              />
+            </div>
+          </div>
+
+          {/* Behavioral Settings Section */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">行为偏好 (Behavior)</label>
+            <FrequencySelector 
+              label="朋友圈发布频率" 
+              value={editingChar.momentsFrequency} 
+              onChange={v => setEditingChar({ ...editingChar, momentsFrequency: v })} 
+            />
+            <FrequencySelector 
+              label="微博发布频率" 
+              value={editingChar.weiboFrequency} 
+              onChange={v => setEditingChar({ ...editingChar, weiboFrequency: v })} 
+            />
+            <div className="pt-2">
+              <ToggleSwitch 
+                isOn={editingChar.proactiveTicketing || false} 
+                onToggle={() => setEditingChar({ ...editingChar, proactiveTicketing: !editingChar.proactiveTicketing })}
+                label="主动约会/购票"
+                icon="fas fa-calendar-check"
+                color="bg-pink-500"
+              />
+              <p className="text-[9px] text-gray-400 px-1 mt-1 leading-tight">
+                开启后，AI 将会根据剧情主动在对话中发起活动邀约或在后台抢购大麦票务。
+              </p>
+            </div>
+          </div>
+
+          {/* Perception Section */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">感知设定 (AI Memory)</label>
+            <div className="divide-y divide-gray-50">
+              <ToggleSwitch 
+                isOn={editingChar.perceiveWorldNews || false} 
+                onToggle={() => setEditingChar({ ...editingChar, perceiveWorldNews: !editingChar.perceiveWorldNews })}
+                label="感知世界新闻"
+                icon="fas fa-globe-americas"
+                color="bg-red-500"
+              />
+              <ToggleSwitch 
+                isOn={editingChar.perceiveSocialMedia || false} 
+                onToggle={() => setEditingChar({ ...editingChar, perceiveSocialMedia: !editingChar.perceiveSocialMedia })}
+                label="浏览社交媒体"
+                icon="fas fa-hashtag"
+                color="bg-orange-500"
+              />
+              <ToggleSwitch 
+                isOn={editingChar.perceiveUserPersona || false} 
+                onToggle={() => setEditingChar({ ...editingChar, perceiveUserPersona: !editingChar.perceiveUserPersona })}
+                label="洞悉用户人设"
+                icon="fas fa-id-badge"
+                color="bg-purple-500"
+              />
+            </div>
+          </div>
+
+          {/* Delete Button */}
+          {characters.find(c => c.id === editingChar.id) && (
+            <button 
+              onClick={() => handleDeleteChar(editingChar.id!)}
+              className="w-full bg-white p-4 rounded-xl shadow-sm text-red-500 font-bold text-sm active:bg-red-50 transition-colors"
+            >
+              删除该角色
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-[#f2f2f7] animate-in slide-in-from-right duration-300">
@@ -115,19 +340,29 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
 
         {activeTab === 'chars' && (
           <div className="space-y-4">
-            <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block ml-1">当前存活角色</label>
+            <div className="flex justify-between items-center ml-1">
+              <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block">当前存活角色</label>
+              <span className="text-[10px] text-gray-300 font-bold">{characters.length} 个角色</span>
+            </div>
             {characters.map(char => (
-              <div key={char.id} className="bg-white p-4 rounded-xl shadow-sm flex items-center gap-4 active:bg-gray-50 transition-colors">
-                 <img src={char.avatar} className="w-12 h-12 rounded-full object-cover border border-gray-100" />
+              <div 
+                key={char.id} 
+                onClick={() => handleStartEdit(char)}
+                className="bg-white p-4 rounded-xl shadow-sm flex items-center gap-4 active:bg-gray-100 transition-colors cursor-pointer group"
+              >
+                 <img src={char.avatar} className="w-12 h-12 rounded-xl object-cover border border-gray-100 shadow-sm" alt={char.name} />
                  <div className="flex-1">
-                    <div className="font-bold text-[15px]">{char.name}</div>
-                    <div className="text-[11px] text-gray-400 truncate max-w-[200px]">{char.background}</div>
+                    <div className="font-bold text-[15px] group-hover:text-[#007aff] transition-colors">{char.name}</div>
+                    <div className="text-[11px] text-gray-400 truncate max-w-[200px]">{char.background || '暂无背景描述'}</div>
                  </div>
-                 <i className="fas fa-chevron-right text-gray-300"></i>
+                 <i className="fas fa-chevron-right text-gray-300 text-xs"></i>
               </div>
             ))}
-            <button className="w-full bg-white p-4 rounded-xl shadow-sm text-blue-500 font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all">
-              <i className="fas fa-plus-circle"></i> 创建新角色
+            <button 
+              onClick={handleStartCreate}
+              className="w-full bg-white p-4 rounded-xl shadow-sm text-[#007aff] font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all border border-dashed border-blue-100 mt-2"
+            >
+              <i className="fas fa-plus-circle"></i> 创建新角色卡
             </button>
           </div>
         )}

@@ -1,12 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Character, Message, NewsItem, Ticket } from "../types";
-
-const API_KEY = process.env.API_KEY || "";
-
-export const getGeminiClient = () => {
-  return new GoogleGenAI({ apiKey: API_KEY });
-};
+import { Character, Message } from "../types";
 
 // Character Chat Logic (using gemini-3-pro-preview for logic/personality)
 export const generateCharacterResponse = async (
@@ -15,7 +9,8 @@ export const generateCharacterResponse = async (
   worldPrompt: string,
   userMessage: string
 ) => {
-  const ai = getGeminiClient();
+  // Always create a new GoogleGenAI instance right before making an API call to ensure it uses the most up-to-date API key.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   
   // Format history for context (last 20)
   const contextHistory = history.slice(-20).map(m => 
@@ -67,7 +62,8 @@ export const generateDailyNewsAndSocial = async (
   worldDescription: string,
   characters: Character[]
 ) => {
-  const ai = getGeminiClient();
+  // Always create a new GoogleGenAI instance right before making an API call.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   
   const prompt = `
     基于以下世界观，生成今日的3条新闻和2条角色动态。
@@ -115,7 +111,7 @@ export const generateDailyNewsAndSocial = async (
       }
     });
 
-    return JSON.parse(response.text);
+    return JSON.parse(response.text || "{}");
   } catch (error) {
     console.error("World Generation Error:", error);
     return null;

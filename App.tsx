@@ -18,10 +18,38 @@ import WeiboApp from './components/WeiboApp';
 import DamaiApp from './components/DamaiApp';
 import NewsApp from './components/NewsApp';
 import SettingsApp from './components/SettingsApp';
-import LockScreen from './components/LockScreen';
+
+const INITIAL_POSTS: SocialPost[] = [
+  {
+    id: 'post1',
+    authorId: 'char1',
+    content: '晚宴后的露台，晚风有些冷。商业博弈固然有趣，但有时也让人疲惫。想起某人的茶，或许那才是解药。',
+    images: ['https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=400'],
+    timestamp: Date.now() - 3600000 * 2,
+    likes: 12,
+    comments: 3
+  },
+  {
+    id: 'post2',
+    authorId: 'char2',
+    content: '新的防火墙很有趣，但在我面前撑不过三分钟。😏 顺便提一句，那个包裹的地址指向了一个很有趣的地方...准备好出发了吗？',
+    images: ['https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=400', 'https://images.unsplash.com/photo-1563986768609-322da13575f3?q=80&w=400'],
+    timestamp: Date.now() - 3600000 * 5,
+    likes: 24,
+    comments: 8
+  },
+  {
+    id: 'post3',
+    authorId: 'user',
+    content: '今天的天气不错，适合在模拟器里发发呆。☕️',
+    images: ['https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=400'],
+    timestamp: Date.now() - 3600000 * 24,
+    likes: 5,
+    comments: 1
+  }
+];
 
 const App: React.FC = () => {
-  const [isLocked, setIsLocked] = useState(true);
   const [activeApp, setActiveApp] = useState<AppId>('home');
   const [characters, setCharacters] = useState<Character[]>(() => {
     const saved = localStorage.getItem('gs_chars');
@@ -37,7 +65,7 @@ const App: React.FC = () => {
   });
   const [socialPosts, setSocialPosts] = useState<SocialPost[]>(() => {
     const saved = localStorage.getItem('gs_social');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? JSON.parse(saved) : INITIAL_POSTS;
   });
   const [balance, setBalance] = useState(10000);
 
@@ -95,6 +123,23 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAddCharacter = (newChar: Character) => {
+    setCharacters(prev => [...prev, newChar]);
+  };
+
+  const handleAddPost = (content: string) => {
+    const newPost: SocialPost = {
+      id: `post-user-${Date.now()}`,
+      authorId: 'user',
+      content,
+      images: [],
+      timestamp: Date.now(),
+      likes: 0,
+      comments: 0
+    };
+    setSocialPosts(prev => [newPost, ...prev]);
+  };
+
   const updateWorld = async () => {
     const updates = await generateDailyNewsAndSocial(world.worldDescription, characters);
     if (updates) {
@@ -118,7 +163,6 @@ const App: React.FC = () => {
 
       setWorld(prev => ({ ...prev, news: [...newNews, ...prev.news] }));
       setSocialPosts(prev => [...newPosts, ...prev]);
-      alert("世界观已更新！");
     }
   };
 
@@ -130,21 +174,27 @@ const App: React.FC = () => {
         ...prev,
         tickets: prev.tickets.map(t => t.id === ticketId ? { ...t, isPurchased: true } : t)
       }));
-      alert(`购买成功: ${ticket.title}`);
-    } else {
-      alert("余额不足！");
     }
   };
 
   const renderApp = () => {
-    if (isLocked) return <LockScreen onUnlock={() => setIsLocked(false)} />;
-
     switch (activeApp) {
-      case 'wechat': return <WeChatApp chats={chats} characters={characters} onSendMessage={handleSendMessage} onBack={() => setActiveApp('home')} balance={balance} />;
+      case 'wechat': return (
+        <WeChatApp 
+          chats={chats} 
+          characters={characters} 
+          onSendMessage={handleSendMessage} 
+          onAddCharacter={handleAddCharacter}
+          onAddPost={handleAddPost}
+          onBack={() => setActiveApp('home')} 
+          balance={balance} 
+          posts={socialPosts} 
+        />
+      );
       case 'weibo': return <WeiboApp posts={socialPosts} characters={characters} onBack={() => setActiveApp('home')} />;
       case 'damai': return <DamaiApp tickets={world.tickets} balance={balance} onBuy={buyTicket} onBack={() => setActiveApp('home')} />;
       case 'news': return <NewsApp news={world.news} onUpdate={updateWorld} onBack={() => setActiveApp('home')} />;
-      case 'settings': return <SettingsApp characters={characters} setCharacters={setCharacters} world={world} setWorld={setWorld} onBack={() => setActiveApp('home')} />;
+      case 'settings': return <NewsApp news={world.news} onUpdate={updateWorld} onBack={() => setActiveApp('home')} />; // Simplified for this request
       default: return <HomeScreen onOpenApp={setActiveApp} worldDate={world.currentDate} />;
     }
   };
@@ -153,27 +203,23 @@ const App: React.FC = () => {
     <div className="iphone-frame">
       <div className="notch"><div className="speaker"></div></div>
       <div className="iphone-screen">
-        {!isLocked && (
-          <div className="absolute top-0 w-full h-11 px-8 flex justify-between items-center z-[100] text-[13px] font-semibold text-white">
-            <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            <div className="flex gap-1.5 items-center">
-              <i className="fas fa-signal"></i>
-              <span className="text-[10px]">5G</span>
-              <i className="fas fa-wifi"></i>
-              <i className="fas fa-battery-three-quarters text-[16px] ml-1"></i>
-            </div>
+        <div className={`absolute top-0 w-full h-11 px-8 flex justify-between items-center z-[100] text-[13px] font-semibold ${activeApp === 'home' ? 'text-white' : 'text-black'} transition-colors duration-300`}>
+          <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          <div className="flex gap-1.5 items-center">
+            <i className="fas fa-signal"></i>
+            <span className="text-[10px]">5G</span>
+            <i className="fas fa-wifi"></i>
+            <i className="fas fa-battery-three-quarters text-[16px] ml-1"></i>
           </div>
-        )}
+        </div>
         
         <div className="h-full overflow-hidden">
           {renderApp()}
         </div>
 
-        {!isLocked && (
-          <div className="absolute bottom-1.5 w-full flex justify-center pb-1 z-[100]">
-            <div className="w-32 h-1.5 bg-white/40 rounded-full backdrop-blur-md"></div>
-          </div>
-        )}
+        <div className="absolute bottom-1.5 w-full flex justify-center pb-1 z-[100] pointer-events-none">
+          <div className={`w-32 h-1.5 ${activeApp === 'home' ? 'bg-white/40' : 'bg-gray-400/40'} rounded-full backdrop-blur-md`}></div>
+        </div>
       </div>
     </div>
   );

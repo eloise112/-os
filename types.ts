@@ -45,6 +45,7 @@ export interface ChatSession {
   characterId: string;
   messages: Message[];
   lastMessageAt: number;
+  unreadCount?: number;
 }
 
 export interface SocialPost {
@@ -59,6 +60,13 @@ export interface SocialPost {
   platform: 'moments' | 'weibo';
 }
 
+export interface HotSearchItem {
+  id: string;
+  title: string;
+  hotness: string; // e.g. "120w"
+  tag?: '热' | '新' | '爆' | '荐';
+}
+
 export interface ApiSettings {
   model: string;
   apiKey: string;
@@ -67,6 +75,10 @@ export interface ApiSettings {
 export interface ApiConfig {
   chat: ApiSettings;
   world: ApiSettings;
+  providerKeys: {
+    zhipu?: string;
+    deepseek?: string;
+  };
 }
 
 export interface Ticket {
@@ -92,6 +104,7 @@ export interface WorldState {
   currentDate: string;
   news: NewsItem[];
   tickets: Ticket[];
+  hotSearches: HotSearchItem[];
   // Interaction settings
   enableMomentsInteraction: boolean;
   maxMomentReplies: number;

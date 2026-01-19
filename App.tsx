@@ -12,7 +12,13 @@ import {
   Comment
 } from './types';
 import { INITIAL_CHARACTERS, INITIAL_WORLD } from './constants';
-import { generateCharacterResponse, generateDailyNewsAndSocial, generateInteractionForPost } from './services/gemini';
+import { 
+  generateCharacterResponse, 
+  generateWorldNewsItems, 
+  generateWorldHotSearches, 
+  generateWorldSocialPosts, 
+  generateInteractionForPost 
+} from './services/gemini';
 
 // Components
 import HomeScreen from './components/HomeScreen';
@@ -21,36 +27,6 @@ import WeiboApp from './components/WeiboApp';
 import DamaiApp from './components/DamaiApp';
 import NewsApp from './components/NewsApp';
 import SettingsApp from './components/SettingsApp';
-
-const INITIAL_MOMENTS: SocialPost[] = [
-  {
-    id: 'post1',
-    authorId: 'char1',
-    content: '晚宴后的露台，晚风有些冷。想起某人的茶，或许那才是解药。',
-    images: ['https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?q=80&w=400'],
-    timestamp: Date.now() - 3600000 * 2,
-    likes: 12,
-    comments: 3,
-    commentsList: [
-       { id: 'c1', authorId: 'char2', authorName: '林浅 (Lin Qian)', content: '大总裁也会emo吗？记得多加两块糖哦。', timestamp: Date.now() - 3000000 }
-    ],
-    platform: 'moments'
-  }
-];
-
-const INITIAL_WEIBO: SocialPost[] = [
-  {
-    id: 'weibo1',
-    authorId: 'char1',
-    content: '今日沈氏集团年度晚宴圆满落幕，感谢各位业界同仁的莅临。未来，我们将继续深耕极光能源领域。',
-    images: ['https://images.unsplash.com/photo-1511795409834-ef04bbd61622?q=80&w=400'],
-    timestamp: Date.now() - 3600000 * 3,
-    likes: 520,
-    comments: 42,
-    commentsList: [],
-    platform: 'weibo'
-  }
-];
 
 const App: React.FC = () => {
   const [activeApp, setActiveApp] = useState<AppId>('home');
@@ -68,26 +44,28 @@ const App: React.FC = () => {
   });
   const [momentsPosts, setMomentsPosts] = useState<SocialPost[]>(() => {
     const saved = localStorage.getItem('gs_moments');
-    return saved ? JSON.parse(saved) : INITIAL_MOMENTS;
+    return saved ? JSON.parse(saved) : [];
   });
   const [weiboPosts, setWeiboPosts] = useState<SocialPost[]>(() => {
     const saved = localStorage.getItem('gs_weibo');
-    return saved ? JSON.parse(saved) : INITIAL_WEIBO;
+    return saved ? JSON.parse(saved) : [];
   });
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('gs_user');
     return saved ? JSON.parse(saved) : {
-      name: '测试用户',
-      wechatId: 'Gemini_User_01',
+      name: '极客观察员',
+      wechatId: 'Gemini_OS_User',
       avatar: 'https://picsum.photos/seed/user/100/100',
       persona: '你是一名热爱生活的现代都市青年，性格温和，对世界充满好奇。'
     };
   });
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     const saved = localStorage.getItem('gs_api_config');
-    return saved ? JSON.parse(saved) : {
+    const parsed = saved ? JSON.parse(saved) : null;
+    return parsed || {
       chat: { model: 'gemini-3-pro-preview', apiKey: '' },
-      world: { model: 'gemini-3-flash-preview', apiKey: '' }
+      world: { model: 'gemini-3-flash-preview', apiKey: '' },
+      providerKeys: { zhipu: '', deepseek: '' }
     };
   });
   const [balance, setBalance] = useState(10000);
@@ -112,7 +90,8 @@ const App: React.FC = () => {
         world.worldDescription, 
         userProfile, 
         world.maxMomentReplies,
-        apiConfig.world
+        apiConfig.world,
+        apiConfig.providerKeys
       );
       
       if (interaction && interaction.interactions) {
@@ -141,15 +120,7 @@ const App: React.FC = () => {
   };
 
   const handleSendMessage = async (charId: string, text: string, type: Message['type'] = 'text', amount?: number, locationName?: string) => {
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      senderId: 'user',
-      text,
-      type,
-      amount,
-      locationName,
-      timestamp: Date.now(),
-    };
+    const newMessage: Message = { id: Date.now().toString(), senderId: 'user', text, type, amount, locationName, timestamp: Date.now() };
 
     setChats(prev => ({
       ...prev,
@@ -157,82 +128,51 @@ const App: React.FC = () => {
         characterId: charId,
         messages: [...(prev[charId]?.messages || []), newMessage],
         lastMessageAt: Date.now(),
+        unreadCount: 0 // Reset when user sends message
       }
     }));
 
-    if (type === 'transfer' && amount) {
-      setBalance(b => b - amount);
-    }
+    if (type === 'transfer' && amount) setBalance(b => b - amount);
 
-    if (['text', 'location', 'sticker', 'transfer'].includes(type)) {
-      const character = characters.find(c => c.id === charId)!;
-      const history = chats[charId]?.messages || [];
-      
-      let promptText = text;
-      if (type === 'location') promptText = `我向你发送了一个位置：${locationName}`;
-      if (type === 'transfer') promptText = `我向你发起了转账：¥${amount}`;
-      if (type === 'sticker') promptText = `我向你发送了一个表情包：${text}`;
+    const character = characters.find(c => c.id === charId)!;
+    const history = chats[charId]?.messages || [];
+    
+    const responseText = await generateCharacterResponse(
+      character, 
+      history, 
+      world.worldDescription, 
+      text, 
+      userProfile, 
+      apiConfig.chat,
+      apiConfig.providerKeys
+    );
+    
+    const aiMessage: Message = { id: (Date.now() + 1).toString(), senderId: charId, text: responseText, type: 'text', timestamp: Date.now() + 1 };
 
-      const responseText = await generateCharacterResponse(
-        character, 
-        history, 
-        world.worldDescription, 
-        promptText, 
-        userProfile,
-        apiConfig.chat
-      );
-      
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        senderId: charId,
-        text: responseText,
-        type: 'text',
-        timestamp: Date.now() + 1,
-      };
-
-      setChats(prev => ({
-        ...prev,
-        [charId]: {
-          ...prev[charId],
-          messages: [...(prev[charId]?.messages || []), aiMessage],
-          lastMessageAt: Date.now() + 1,
-        }
-      }));
-    }
+    setChats(prev => ({
+      ...prev,
+      [charId]: {
+        ...prev[charId],
+        messages: [...(prev[charId]?.messages || []), aiMessage],
+        lastMessageAt: Date.now() + 1,
+        unreadCount: (activeApp === 'wechat' ? 0 : (prev[charId]?.unreadCount || 0) + 1)
+      }
+    }));
   };
 
   const handleAddPost = async (content: string, platform: 'moments' | 'weibo') => {
     const newPost: SocialPost = { 
-      id: `p-${Date.now()}`, 
-      authorId: 'user', 
-      content, 
-      images: [], 
-      timestamp: Date.now(), 
-      likes: 0, 
-      comments: 0,
-      commentsList: [],
-      platform
+      id: `p-${Date.now()}`, authorId: 'user', content, images: [], timestamp: Date.now(), 
+      likes: 0, comments: 0, commentsList: [], platform
     };
-    
     if (platform === 'moments') setMomentsPosts(p => [newPost, ...p]);
     else setWeiboPosts(p => [newPost, ...p]);
-    
     triggerAIInteraction(newPost);
   };
 
   const handleAddComment = async (postId: string, content: string, platform: 'moments' | 'weibo', replyToName?: string) => {
-    const userComment: Comment = {
-      id: `c-u-${Date.now()}`,
-      authorId: 'user',
-      authorName: userProfile.name,
-      content,
-      timestamp: Date.now(),
-      replyToName
-    };
-
+    const userComment: Comment = { id: `c-u-${Date.now()}`, authorId: 'user', authorName: userProfile.name, content, timestamp: Date.now(), replyToName };
     const setter = platform === 'weibo' ? setWeiboPosts : setMomentsPosts;
-    const getter = platform === 'weibo' ? weiboPosts : momentsPosts;
-
     setter(prev => {
       const updated = prev.map(p => {
         if (p.id === postId) {
@@ -241,57 +181,31 @@ const App: React.FC = () => {
         }
         return p;
       });
-      
       const targetPost = updated.find(p => p.id === postId);
       if (targetPost) triggerAIInteraction(targetPost);
-      
       return updated;
     });
   };
 
-  const updateWorld = async () => {
-    const updates = await generateDailyNewsAndSocial(world.worldDescription, characters, apiConfig.world);
-    if (updates) {
-      const newNews = updates.news.map((n: any, i: number) => ({
-        ...n,
-        id: `news-${Date.now()}-${i}`,
-        timestamp: Date.now()
-      }));
+  const updateNews = async () => {
+    const news = await generateWorldNewsItems(world.worldDescription, apiConfig.world, apiConfig.providerKeys);
+    setWorld(prev => ({ ...prev, news: [...news.map((n:any)=>({...n, id:`n-${Date.now()}-${Math.random()}`, timestamp:Date.now()})), ...prev.news] }));
+  };
 
-      const newMoments = updates.momentsPosts.map((p: any, i: number) => {
-        const char = characters.find(c => c.name === p.authorName);
-        return {
-          id: `moments-${Date.now()}-${i}`,
-          authorId: char?.id || 'unknown',
-          content: p.content,
-          images: [],
-          timestamp: Date.now(),
-          likes: Math.floor(Math.random() * 20),
-          comments: 0,
-          commentsList: [],
-          platform: 'moments'
-        };
-      });
+  const updateHotSearches = async () => {
+    const hot = await generateWorldHotSearches(world.worldDescription, apiConfig.world, apiConfig.providerKeys);
+    setWorld(prev => ({ ...prev, hotSearches: hot.map((h:any)=>({...h, id:`h-${Date.now()}-${Math.random()}`})) }));
+  };
 
-      const newWeibo = updates.weiboPosts.map((p: any, i: number) => {
-        const char = characters.find(c => c.name === p.authorName);
-        return {
-          id: `weibo-${Date.now()}-${i}`,
-          authorId: char?.id || 'unknown',
-          content: p.content,
-          images: [],
-          timestamp: Date.now(),
-          likes: Math.floor(Math.random() * 1000),
-          comments: 0,
-          commentsList: [],
-          platform: 'weibo'
-        };
-      });
-
-      setWorld(prev => ({ ...prev, news: [...newNews, ...prev.news] }));
-      setMomentsPosts(prev => [...newMoments, ...prev]);
-      setWeiboPosts(prev => [...newWeibo, ...prev]);
-    }
+  const updateSocial = async (platform: 'weibo' | 'moments') => {
+    const posts = await generateWorldSocialPosts(platform, world.worldDescription, characters, apiConfig.world, apiConfig.providerKeys);
+    const formatted = posts.map((p:any) => ({
+      ...p, id: `p-${Date.now()}-${Math.random()}`, 
+      authorId: characters.find(c => c.name === p.authorName)?.id || 'unknown',
+      images: [], timestamp: Date.now(), likes: Math.floor(Math.random()*100), comments: 0, commentsList: [], platform
+    }));
+    if (platform === 'weibo') setWeiboPosts(prev => [...formatted, ...prev]);
+    else setMomentsPosts(prev => [...formatted, ...prev]);
   };
 
   return (
@@ -311,22 +225,17 @@ const App: React.FC = () => {
         <div className="h-full overflow-hidden">
           {activeApp === 'wechat' ? (
             <WeChatApp 
-              chats={chats} 
-              characters={characters} 
-              user={userProfile}
-              onUpdateUser={setUserProfile}
-              onSendMessage={handleSendMessage} 
-              onAddCharacter={prev => setCharacters(p => [...p, prev])}
+              chats={chats} characters={characters} user={userProfile} onUpdateUser={setUserProfile}
+              onSendMessage={handleSendMessage} onAddCharacter={prev => setCharacters(p => [...p, prev])}
               onAddPost={content => handleAddPost(content, 'moments')}
               onAddComment={(id, content, reply) => handleAddComment(id, content, 'moments', reply)}
               onBack={() => setActiveApp('home')} 
-              balance={balance} 
-              posts={momentsPosts} 
+              onClearUnread={(id) => setChats(prev => prev[id] ? {...prev, [id]: {...prev[id], unreadCount: 0}} : prev)}
+              balance={balance} posts={momentsPosts} 
             />
           ) : activeApp === 'weibo' ? (
             <WeiboApp 
-              posts={weiboPosts} 
-              characters={characters} 
+              posts={weiboPosts} characters={characters} world={world}
               onAddPost={content => handleAddPost(content, 'weibo')}
               onAddComment={(id, content, reply) => handleAddComment(id, content, 'weibo', reply)}
               onBack={() => setActiveApp('home')} 
@@ -340,16 +249,12 @@ const App: React.FC = () => {
               }
             }} onBack={() => setActiveApp('home')} />
           ) : activeApp === 'news' ? (
-            <NewsApp news={world.news} onUpdate={updateWorld} onBack={() => setActiveApp('home')} />
+            <NewsApp news={world.news} onUpdate={updateNews} onBack={() => setActiveApp('home')} />
           ) : activeApp === 'settings' ? (
             <SettingsApp 
-              characters={characters} 
-              setCharacters={setCharacters} 
-              world={world} 
-              setWorld={setWorld} 
-              apiConfig={apiConfig}
-              setApiConfig={setApiConfig}
-              onBack={() => setActiveApp('home')} 
+              characters={characters} setCharacters={setCharacters} world={world} setWorld={setWorld} 
+              apiConfig={apiConfig} setApiConfig={setApiConfig} onBack={() => setActiveApp('home')} 
+              onRefreshNews={updateNews} onRefreshHot={updateHotSearches} onRefreshMoments={() => updateSocial('moments')} onRefreshWeibo={() => updateSocial('weibo')}
             />
           ) : (
             <HomeScreen onOpenApp={setActiveApp} worldDate={world.currentDate} />

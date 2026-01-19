@@ -57,6 +57,11 @@ export const INITIAL_WORLD: WorldState = {
       image: 'https://picsum.photos/seed/movie1/300/400'
     }
   ],
+  hotSearches: [
+    { id: 'h1', title: '极光能源突破性进展', hotness: '450w', tag: '爆' },
+    { id: 'h2', title: '沈氏集团年度晚宴', hotness: '220w', tag: '热' },
+    { id: 'h3', title: '赛博咖啡馆新品上市', hotness: '110w', tag: '新' }
+  ],
   enableMomentsInteraction: true,
   maxMomentReplies: 4
 };

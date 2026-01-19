@@ -1,9 +1,9 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Character, Message, UserProfile, ApiSettings, SocialPost } from "../types";
+import { Character, Message, UserProfile, ApiSettings, SocialPost, ApiConfig } from "../types";
 
 // Generic request handler for non-Gemini models (OpenAI compatible)
-const callExternalProvider = async (settings: ApiSettings, systemPrompt: string, userPrompt: string) => {
+const callExternalProvider = async (settings: ApiSettings, providerKeys: ApiConfig['providerKeys'], systemPrompt: string, userPrompt: string) => {
   const urlMap: Record<string, string> = {
     'glm-4-flash': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
     'deepseek-r1-0528': 'https://api.deepseek.com/chat/completions'
@@ -12,11 +12,20 @@ const callExternalProvider = async (settings: ApiSettings, systemPrompt: string,
   const endpoint = urlMap[settings.model];
   if (!endpoint) throw new Error("Unsupported provider");
 
+  // Fallback to vault keys if settings key is missing
+  let apiKey = settings.apiKey;
+  if (!apiKey) {
+    if (settings.model.includes('glm')) apiKey = providerKeys.zhipu || '';
+    if (settings.model.includes('deepseek')) apiKey = providerKeys.deepseek || '';
+  }
+
+  if (!apiKey) throw new Error("API Key is missing for " + settings.model);
+
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings.apiKey}`
+      'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
       model: settings.model,
@@ -39,13 +48,13 @@ export const generateCharacterResponse = async (
   worldPrompt: string,
   userMessage: string,
   userProfile: UserProfile,
-  apiSettings: ApiSettings
+  apiSettings: ApiSettings,
+  providerKeys: ApiConfig['providerKeys']
 ) => {
   const contextHistory = history.slice(-20).map(m => 
     `${m.senderId === 'user' ? userProfile.name : character.name}: ${m.text}`
   ).join('\n');
 
-  // Build dynamic context based on perception flags
   const worldAwareness = character.perceiveWorldNews 
     ? `世界观设定: ${worldPrompt}` 
     : `世界观设定: (角色对宏观世界局势知之甚少)`;
@@ -60,7 +69,7 @@ export const generateCharacterResponse = async (
 
   const socialAwareness = character.perceiveSocialMedia
     ? `注: 角色会浏览朋友圈动态，可能知晓最近发生的日常琐事。`
-    : `注: 角色从不浏览社交媒体，对朋友圈发生的事情毫不知情。`;
+    : `注: 角色从不浏览社交媒体，对朋友圈发生的事情一无所知。`;
 
   const systemPrompt = `
     你现在扮演一名角色。
@@ -69,235 +78,209 @@ export const generateCharacterResponse = async (
     角色偏好: ${character.preferences}
     当前剧情: ${character.storyline}
     ${worldAwareness}
-    
     ${personaAwareness}
-    
     ${socialAwareness}
-    
-    你的回复应该是口语化的、符合角色性格的。你可以使用括号表达动作或心理[例如: (微笑着看向你)]。
-    你必须时刻意识到对面的人是谁，并根据对方的姓名和人设表现出相应的态度和认知。
+    你的回复应该是口语化的、符合角色性格的。你可以使用括号表达动作或心理。
     不要以AI的身份说话。保持人设。
   `;
 
-  const userPrompt = `
-    对话历史:
-    ${contextHistory}
-    
-    ${userProfile.name}说: ${userMessage}
-    
-    请回复:
-  `;
+  const userPrompt = `${userProfile.name}说: ${userMessage}\n\n请回复:`;
 
-  // Check if we use Gemini SDK or generic Fetch
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
       const response = await ai.models.generateContent({
         model: apiSettings.model,
-        contents: userPrompt,
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.8,
-          maxOutputTokens: 500,
-        }
+        contents: `对话历史:\n${contextHistory}\n\n${userPrompt}`,
+        config: { systemInstruction: systemPrompt, temperature: 0.8 }
       });
-      return response.text || "…… (由于信号不好，他似乎沉默了)";
+      return response.text || "……";
     } catch (error) {
       console.error("Gemini Error:", error);
       return "系统错误：无法连接到角色的心。";
     }
   } else {
     try {
-      if (!apiSettings.apiKey) return "请在设置中配置对应的 API KEY 以使用此模型。";
-      const result = await callExternalProvider(apiSettings, systemPrompt, userPrompt);
-      return result || "…… (对方似乎没有回应)";
+      const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, `对话历史:\n${contextHistory}\n\n${userPrompt}`);
+      return result || "……";
     } catch (error) {
-      console.error("External Provider Error:", error);
-      return "网络连接失败，请检查 API 配置。";
+      return "网络连接失败。";
     }
   }
 };
 
-// World Building Logic: Generate News and Posts
-export const generateDailyNewsAndSocial = async (
-  worldDescription: string,
-  characters: Character[],
-  apiSettings: ApiSettings
-) => {
-  const systemPrompt = "你是一个世界观生成引擎，专门基于设定生成新闻动态、微博动态（公开）和朋友圈动态（私人）。";
-  const userPrompt = `
-    基于以下世界观，生成今日的:
-    1. 3条新闻 (news)
-    2. 2条微博动态 (weiboPosts) - 语气要客气、端着、面向大众、展示形象。
-    3. 2条朋友圈动态 (momentsPosts) - 语气要放松、私密、真实、随性。
-    
-    世界观: ${worldDescription}
-    角色列表: ${characters.map(c => c.name).join(', ')}
-    
-    输出要求为严格的 JSON 格式，包含字段: news (Array), weiboPosts (Array), momentsPosts (Array)。
-  `;
+// NEWS GENERATION
+export const generateWorldNewsItems = async (worldDescription: string, apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys']) => {
+  const systemPrompt = "你是一个世界观生成引擎，专门生成基于设定背景的新闻报道。";
+  const userPrompt = `基于以下世界观，生成3条今日头条新闻。\n世界观: ${worldDescription}\n输出要求为 JSON 数组。`;
 
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    try {
-      const response = await ai.models.generateContent({
-        model: apiSettings.model,
-        contents: userPrompt,
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-          responseSchema: {
+    const response = await ai.models.generateContent({
+      model: apiSettings.model,
+      contents: userPrompt,
+      config: { 
+        systemInstruction: systemPrompt, 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
             type: Type.OBJECT,
             properties: {
-              news: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    content: { type: Type.STRING },
-                    category: { type: Type.STRING }
-                  },
-                  required: ["title", "content", "category"]
-                }
-              },
-              weiboPosts: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    authorName: { type: Type.STRING },
-                    content: { type: Type.STRING }
-                  },
-                  required: ["authorName", "content"]
-                }
-              },
-              momentsPosts: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    authorName: { type: Type.STRING },
-                    content: { type: Type.STRING }
-                  },
-                  required: ["authorName", "content"]
-                }
-              }
+              title: { type: Type.STRING },
+              content: { type: Type.STRING },
+              category: { type: Type.STRING }
             },
-            required: ["news", "weiboPosts", "momentsPosts"]
+            required: ["title", "content", "category"]
           }
         }
-      });
-      return JSON.parse(response.text || "{}");
-    } catch (error) {
-      console.error("World Generation Error:", error);
-      return null;
-    }
+      }
+    });
+    return JSON.parse(response.text || "[]");
   } else {
     try {
-      if (!apiSettings.apiKey) return null;
-      const result = await callExternalProvider(apiSettings, systemPrompt, userPrompt + "\n请务必只输出 JSON 代码块。");
-      const jsonStr = result.replace(/```json|```/g, '').trim();
-      return JSON.parse(jsonStr);
-    } catch (error) {
-      console.error("External World Generation Error:", error);
-      return null;
+      const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
+      return JSON.parse(result || "[]");
+    } catch (e) {
+      return [];
     }
   }
 };
 
-// Interaction Logic: Generate comments/replies for a post
+// HOT SEARCH GENERATION
+export const generateWorldHotSearches = async (worldDescription: string, apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys']) => {
+  const systemPrompt = "你是一个世界观生成引擎，专门生成微博风格的热搜榜单。";
+  const userPrompt = `基于以下世界观，生成5条当前最火的热搜话题。\n世界观: ${worldDescription}\n输出要求为 JSON 数组。`;
+
+  if (apiSettings.model.startsWith('gemini')) {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: apiSettings.model,
+      contents: userPrompt,
+      config: { 
+        systemInstruction: systemPrompt, 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              hotness: { type: Type.STRING },
+              tag: { type: Type.STRING }
+            },
+            required: ["title", "hotness"]
+          }
+        }
+      }
+    });
+    return JSON.parse(response.text || "[]");
+  } else {
+    try {
+      const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
+      return JSON.parse(result || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+};
+
+// SOCIAL POST GENERATION
+export const generateWorldSocialPosts = async (platform: 'weibo' | 'moments', worldDescription: string, characters: Character[], apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys']) => {
+  const isWeibo = platform === 'weibo';
+  const systemPrompt = `你是一个世界观生成引擎，专门生成角色在${isWeibo ? '微博(端着、公开)' : '朋友圈(随性、私人)'}发布的动态。`;
+  const userPrompt = `基于以下世界观和角色，生成2条${platform}动态。\n世界观: ${worldDescription}\n角色: ${characters.map(c => c.name).join(', ')}\n输出要求为 JSON 数组。`;
+
+  if (apiSettings.model.startsWith('gemini')) {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: apiSettings.model,
+      contents: userPrompt,
+      config: { 
+        systemInstruction: systemPrompt, 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              authorName: { type: Type.STRING },
+              content: { type: Type.STRING }
+            },
+            required: ["authorName", "content"]
+          }
+        }
+      }
+    });
+    return JSON.parse(response.text || "[]");
+  } else {
+    try {
+      const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
+      return JSON.parse(result || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+};
+
+// Interaction Logic
 export const generateInteractionForPost = async (
   post: SocialPost,
   characters: Character[],
   worldDescription: string,
   userProfile: UserProfile,
   maxReplies: number,
-  apiSettings: ApiSettings
+  apiSettings: ApiSettings,
+  providerKeys: ApiConfig['providerKeys']
 ) => {
   const authorName = post.authorId === 'user' ? userProfile.name : (characters.find(c => c.id === post.authorId)?.name || "未知用户");
   const isWeibo = post.platform === 'weibo';
   
-  const existingCommentsText = post.commentsList && post.commentsList.length > 0 
-    ? `当前已有评论互动:\n${post.commentsList.map(c => `- ${c.authorName}${c.replyToName ? ` 回复 ${c.replyToName}` : ''}: ${c.content}`).join('\n')}`
-    : "当前尚无评论互动。";
-
   const systemPrompt = `
     你是一个社交媒体互动引擎。负责模拟${isWeibo ? '微博(公开)' : '朋友圈(私人)'}下方的评论互动。
     世界观: ${worldDescription}
-    
-    ${isWeibo ? '【平台特性：微博】。互动语气要稍微礼貌或带有某种程度的“端着”的感觉，即便回复熟人也可能稍微注意形象，或者像粉丝/路人一样评论。' : '【平台特性：朋友圈】。互动语气要非常随性、亲近、真实，像老朋友在聊天。'}
-    
-    角色列表:
-    ${characters.map(c => `- ${c.name}: ${c.background}`).join('\n')}
-    
-    规则:
-    1. 生成角色对该动态的评论，或者角色之间的互相回复，或者角色回复用户。
-    2. 互动的语气必须符合角色性格。
-    3. 总共生成的**新增**评论数量(包含对话)上限为 ${maxReplies}。
-    4. 角色可以回复用户(${userProfile.name})的评论。
-    5. 不要以AI身份说话。
-    6. 输出必须为 JSON 格式。
+    语气: ${isWeibo ? '礼貌、端着、公众形象' : '随性、亲近、真实'}
+    角色列表: ${characters.map(c => `${c.name}: ${c.background}`).join('\n')}
+    规则: 生成最多 ${maxReplies} 条互动。
   `;
 
-  const userPrompt = `
-    动态正文内容:
-    作者: ${authorName}
-    平台: ${isWeibo ? '微博' : '朋友圈'}
-    正文: ${post.content}
-    
-    ${existingCommentsText}
-    
-    请根据以上内容生成新的、有趣的互动。
-    输出 JSON 格式:
-    {
-      "interactions": [
-        { "authorName": "角色名", "content": "评论内容", "replyToName": "被回复者的名字(选填)" }
-      ]
-    }
-  `;
+  const userPrompt = `动态正文: ${post.content}\n作者: ${authorName}\n平台: ${post.platform}\n请生成评论 JSON。`;
 
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    try {
-      const response = await ai.models.generateContent({
-        model: apiSettings.model,
-        contents: userPrompt,
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              interactions: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    authorName: { type: Type.STRING },
-                    content: { type: Type.STRING },
-                    replyToName: { type: Type.STRING }
-                  },
-                  required: ["authorName", "content"]
-                }
+    const response = await ai.models.generateContent({
+      model: apiSettings.model,
+      contents: userPrompt,
+      config: { 
+        systemInstruction: systemPrompt, 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            interactions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  authorName: { type: Type.STRING },
+                  content: { type: Type.STRING },
+                  replyToName: { type: Type.STRING }
+                },
+                required: ["authorName", "content"]
               }
-            },
-            required: ["interactions"]
-          }
+            }
+          },
+          required: ["interactions"]
         }
-      });
-      return JSON.parse(response.text || "{}");
-    } catch (error) {
-      console.error("Interaction Generation Error:", error);
-      return null;
-    }
+      }
+    });
+    return JSON.parse(response.text || "{\"interactions\": []}");
   } else {
-    const result = await callExternalProvider(apiSettings, systemPrompt, userPrompt);
     try {
-      const jsonStr = result.replace(/```json|```/g, '').trim();
-      return JSON.parse(jsonStr);
-    } catch {
-      return null;
+      const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
+      return JSON.parse(result || "{\"interactions\": []}");
+    } catch (e) {
+      return { interactions: [] };
     }
   }
 };

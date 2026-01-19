@@ -7,15 +7,27 @@ export interface Character {
   preferences: string;
   storyline: string;
   isFavorite?: boolean;
+  // Perception settings
+  perceiveWorldNews?: boolean;
+  perceiveSocialMedia?: boolean;
+  perceiveUserPersona?: boolean;
+}
+
+export interface UserProfile {
+  name: string;
+  wechatId: string;
+  avatar: string;
+  persona: string;
 }
 
 export interface Message {
   id: string;
   senderId: string;
   text: string;
-  type: 'text' | 'image' | 'transfer' | 'sticker';
+  type: 'text' | 'image' | 'transfer' | 'sticker' | 'location';
   timestamp: number;
-  amount?: number; // for transfers
+  amount?: number;
+  locationName?: string;
   status?: 'pending' | 'received';
 }
 
@@ -33,6 +45,16 @@ export interface SocialPost {
   timestamp: number;
   likes: number;
   comments: number;
+}
+
+export interface ApiSettings {
+  model: string;
+  apiKey: string;
+}
+
+export interface ApiConfig {
+  chat: ApiSettings;
+  world: ApiSettings;
 }
 
 export interface Ticket {

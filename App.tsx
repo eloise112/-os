@@ -6,7 +6,9 @@ import {
   ChatSession, 
   Message, 
   WorldState, 
-  SocialPost 
+  SocialPost,
+  UserProfile,
+  ApiConfig
 } from './types';
 import { INITIAL_CHARACTERS, INITIAL_WORLD } from './constants';
 import { generateCharacterResponse, generateDailyNewsAndSocial } from './services/gemini';
@@ -67,6 +69,22 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('gs_social');
     return saved ? JSON.parse(saved) : INITIAL_POSTS;
   });
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('gs_user');
+    return saved ? JSON.parse(saved) : {
+      name: '测试用户',
+      wechatId: 'Gemini_User_01',
+      avatar: 'https://picsum.photos/seed/user/100/100',
+      persona: '你是一名热爱生活的现代都市青年，性格温和，对世界充满好奇。'
+    };
+  });
+  const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
+    const saved = localStorage.getItem('gs_api_config');
+    return saved ? JSON.parse(saved) : {
+      chat: { model: 'gemini-3-pro-preview', apiKey: '' },
+      world: { model: 'gemini-3-flash-preview', apiKey: '' }
+    };
+  });
   const [balance, setBalance] = useState(10000);
 
   useEffect(() => {
@@ -74,15 +92,18 @@ const App: React.FC = () => {
     localStorage.setItem('gs_world', JSON.stringify(world));
     localStorage.setItem('gs_chats', JSON.stringify(chats));
     localStorage.setItem('gs_social', JSON.stringify(socialPosts));
-  }, [characters, world, chats, socialPosts]);
+    localStorage.setItem('gs_user', JSON.stringify(userProfile));
+    localStorage.setItem('gs_api_config', JSON.stringify(apiConfig));
+  }, [characters, world, chats, socialPosts, userProfile, apiConfig]);
 
-  const handleSendMessage = async (charId: string, text: string, type: Message['type'] = 'text', amount?: number) => {
+  const handleSendMessage = async (charId: string, text: string, type: Message['type'] = 'text', amount?: number, locationName?: string) => {
     const newMessage: Message = {
       id: Date.now().toString(),
       senderId: 'user',
       text,
       type,
       amount,
+      locationName,
       timestamp: Date.now(),
     };
 
@@ -99,10 +120,23 @@ const App: React.FC = () => {
       setBalance(b => b - amount);
     }
 
-    if (type === 'text') {
+    if (type === 'text' || type === 'location' || type === 'sticker' || type === 'transfer') {
       const character = characters.find(c => c.id === charId)!;
       const history = chats[charId]?.messages || [];
-      const responseText = await generateCharacterResponse(character, history, world.worldDescription, text);
+      
+      let promptText = text;
+      if (type === 'location') promptText = `我向你发送了一个位置：${locationName}`;
+      if (type === 'transfer') promptText = `我向你发起了转账：¥${amount}`;
+      if (type === 'sticker') promptText = `我向你发送了一个表情包：${text}`;
+
+      const responseText = await generateCharacterResponse(
+        character, 
+        history, 
+        world.worldDescription, 
+        promptText, 
+        userProfile,
+        apiConfig.chat
+      );
       
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -123,25 +157,8 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddCharacter = (newChar: Character) => {
-    setCharacters(prev => [...prev, newChar]);
-  };
-
-  const handleAddPost = (content: string) => {
-    const newPost: SocialPost = {
-      id: `post-user-${Date.now()}`,
-      authorId: 'user',
-      content,
-      images: [],
-      timestamp: Date.now(),
-      likes: 0,
-      comments: 0
-    };
-    setSocialPosts(prev => [newPost, ...prev]);
-  };
-
   const updateWorld = async () => {
-    const updates = await generateDailyNewsAndSocial(world.worldDescription, characters);
+    const updates = await generateDailyNewsAndSocial(world.worldDescription, characters, apiConfig.world);
     if (updates) {
       const newNews = updates.news.map((n: any, i: number) => ({
         ...n,
@@ -166,35 +183,40 @@ const App: React.FC = () => {
     }
   };
 
-  const buyTicket = (ticketId: string) => {
-    const ticket = world.tickets.find(t => t.id === ticketId);
-    if (ticket && balance >= ticket.price) {
-      setBalance(b => b - ticket.price);
-      setWorld(prev => ({
-        ...prev,
-        tickets: prev.tickets.map(t => t.id === ticketId ? { ...t, isPurchased: true } : t)
-      }));
-    }
-  };
-
   const renderApp = () => {
     switch (activeApp) {
       case 'wechat': return (
         <WeChatApp 
           chats={chats} 
           characters={characters} 
+          user={userProfile}
+          onUpdateUser={setUserProfile}
           onSendMessage={handleSendMessage} 
-          onAddCharacter={handleAddCharacter}
-          onAddPost={handleAddPost}
+          onAddCharacter={prev => setCharacters(p => [...p, prev])}
+          onAddPost={content => setSocialPosts(p => [{ id: `p-${Date.now()}`, authorId: 'user', content, images: [], timestamp: Date.now(), likes: 0, comments: 0 }, ...p])}
           onBack={() => setActiveApp('home')} 
           balance={balance} 
           posts={socialPosts} 
         />
       );
       case 'weibo': return <WeiboApp posts={socialPosts} characters={characters} onBack={() => setActiveApp('home')} />;
-      case 'damai': return <DamaiApp tickets={world.tickets} balance={balance} onBuy={buyTicket} onBack={() => setActiveApp('home')} />;
+      case 'damai': return <DamaiApp tickets={world.tickets} balance={balance} onBuy={id => {
+        const ticket = world.tickets.find(t => t.id === id);
+        if (ticket && balance >= ticket.price) {
+          setBalance(b => b - ticket.price);
+          setWorld(prev => ({ ...prev, tickets: prev.tickets.map(t => t.id === id ? { ...t, isPurchased: true } : t) }));
+        }
+      }} onBack={() => setActiveApp('home')} />;
       case 'news': return <NewsApp news={world.news} onUpdate={updateWorld} onBack={() => setActiveApp('home')} />;
-      case 'settings': return <NewsApp news={world.news} onUpdate={updateWorld} onBack={() => setActiveApp('home')} />; // Simplified for this request
+      case 'settings': return <SettingsApp 
+        characters={characters} 
+        setCharacters={setCharacters} 
+        world={world} 
+        setWorld={setWorld} 
+        apiConfig={apiConfig}
+        setApiConfig={setApiConfig}
+        onBack={() => setActiveApp('home')} 
+      />;
       default: return <HomeScreen onOpenApp={setActiveApp} worldDate={world.currentDate} />;
     }
   };

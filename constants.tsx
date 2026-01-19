@@ -9,7 +9,10 @@ export const INITIAL_CHARACTERS: Character[] = [
     avatar: 'https://picsum.photos/seed/shenyi/200/200',
     background: '冷淡而深情的跨国企业总裁，与你在商业晚宴上初遇。',
     preferences: '喜欢清茶、古典乐、雨天。讨厌嘈杂和背叛。',
-    storyline: '目前由于一次项目竞争，你们处于某种微妙的博弈关系中，但他的话语间似乎带着某种怀旧。'
+    storyline: '目前由于一次项目竞争，你们处于某种微妙的博弈关系中，但他的话语间似乎带着某种怀旧。',
+    perceiveWorldNews: true,
+    perceiveSocialMedia: true,
+    perceiveUserPersona: true
   },
   {
     id: 'char2',
@@ -17,7 +20,10 @@ export const INITIAL_CHARACTERS: Character[] = [
     avatar: 'https://picsum.photos/seed/linqian/200/200',
     background: '古灵精怪的天才黑客，是你的童年玩伴，也是你最可靠的秘密支持者。',
     preferences: '喜欢可乐、电子游戏、深夜代码。讨厌繁琐的社交规则。',
-    storyline: '她最近在帮你调查一个神秘包裹的来源。'
+    storyline: '她最近在帮你调查一个神秘包裹的来源。',
+    perceiveWorldNews: true,
+    perceiveSocialMedia: true,
+    perceiveUserPersona: true
   }
 ];
 

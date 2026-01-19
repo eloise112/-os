@@ -1,6 +1,5 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { Character, Message, UserProfile, ApiSettings, SocialPost, ApiConfig } from "../types";
+import { Character, Message, UserProfile, ApiSettings, SocialPost, ApiConfig, Ticket } from "../types";
 
 export interface ResponseSegment {
   type: 'speech' | 'action';
@@ -119,6 +118,7 @@ export const generateCharacterResponse = async (
           }
         }
       });
+      // Correctly access .text property (not a method)
       const parsed = JSON.parse(response.text || '{"segments": []}');
       return parsed.segments || [{ type: 'speech', text: '……' }];
     } catch (error) {
@@ -136,33 +136,40 @@ export const generateCharacterResponse = async (
   }
 };
 
-export const generateWorldNewsItems = async (worldDescription: string, apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys']) => {
+export const generateWorldNewsItems = async (worldDescription: string, apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys'], categoryFilter?: string) => {
   const systemPrompt = "你是一个世界观生成引擎，专门生成基于设定背景的新闻报道。";
-  const userPrompt = `基于以下世界观，生成3条今日头条新闻。\n世界观: ${worldDescription}\n输出要求为 JSON 数组。`;
+  const categoryContext = categoryFilter ? `重点关注以下类别的新闻：${categoryFilter}。` : "";
+  const userPrompt = `基于以下世界观，生成2-3条今日头条新闻。\n${categoryContext}\n世界观: ${worldDescription}\n输出要求为 JSON 数组。`;
 
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: apiSettings.model,
-      contents: userPrompt,
-      config: { 
-        systemInstruction: systemPrompt, 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              content: { type: Type.STRING },
-              category: { type: Type.STRING }
-            },
-            required: ["title", "content", "category"]
+    try {
+      const response = await ai.models.generateContent({
+        model: apiSettings.model,
+        contents: userPrompt,
+        config: { 
+          systemInstruction: systemPrompt, 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                content: { type: Type.STRING },
+                category: { type: Type.STRING }
+              },
+              required: ["title", "content", "category"]
+            }
           }
         }
-      }
-    });
-    return JSON.parse(response.text || "[]");
+      });
+      // Correctly access .text property
+      return JSON.parse(response.text || "[]");
+    } catch (e) {
+      console.error("News Generation Error:", e);
+      return [];
+    }
   } else {
     try {
       const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
@@ -179,27 +186,86 @@ export const generateWorldHotSearches = async (worldDescription: string, apiSett
 
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: apiSettings.model,
-      contents: userPrompt,
-      config: { 
-        systemInstruction: systemPrompt, 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              hotness: { type: Type.STRING },
-              tag: { type: Type.STRING }
-            },
-            required: ["title", "hotness"]
+    try {
+      const response = await ai.models.generateContent({
+        model: apiSettings.model,
+        contents: userPrompt,
+        config: { 
+          systemInstruction: systemPrompt, 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                hotness: { type: Type.STRING },
+                tag: { type: Type.STRING }
+              },
+              required: ["title", "hotness"]
+            }
           }
         }
-      }
-    });
-    return JSON.parse(response.text || "[]");
+      });
+      // Correctly access .text property
+      return JSON.parse(response.text || "[]");
+    } catch (e) {
+      console.error("Hot Search Generation Error:", e);
+      return [];
+    }
+  } else {
+    try {
+      const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
+      return JSON.parse(result || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+};
+
+export const generateWorldTickets = async (worldDescription: string, apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys'], categoryFilter?: string): Promise<Omit<Ticket, 'id' | 'isPurchased'>[]> => {
+  const systemPrompt = "你是一个世界观生成引擎，专门生成基于设定背景的大麦票务信息。";
+  const categoryContext = categoryFilter ? `你现在只需要生成“${categoryFilter}”类别的票务。` : "";
+  const userPrompt = `基于以下世界观，生成2个新的演出或活动票务信息。
+  ${categoryContext}
+  世界观: ${worldDescription}
+  
+  输出要求：
+  1. 返回 JSON 数组。
+  2. 每个对象包含 title, date (YYYY-MM-DD), price (数字), category ('concert', 'movie', 'theater', 'sports', 'exhibition'), image (随机 unsplash 链接)。
+  `;
+
+  if (apiSettings.model.startsWith('gemini')) {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      const response = await ai.models.generateContent({
+        model: apiSettings.model,
+        contents: userPrompt,
+        config: { 
+          systemInstruction: systemPrompt, 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                date: { type: Type.STRING },
+                price: { type: Type.NUMBER },
+                category: { type: Type.STRING, enum: ['concert', 'movie', 'theater', 'sports', 'exhibition'] },
+                image: { type: Type.STRING }
+              },
+              required: ["title", "date", "price", "category", "image"]
+            }
+          }
+        }
+      });
+      // Correctly access .text property
+      return JSON.parse(response.text || "[]");
+    } catch (e) {
+      console.error("Ticket Generation Error:", e);
+      return [];
+    }
   } else {
     try {
       const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
@@ -236,26 +302,90 @@ export const generateWorldSocialPosts = async (platform: 'weibo' | 'moments', wo
 
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: apiSettings.model,
-      contents: userPrompt,
-      config: { 
-        systemInstruction: systemPrompt, 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              authorName: { type: Type.STRING },
-              content: { type: Type.STRING }
-            },
-            required: ["authorName", "content"]
+    try {
+      const response = await ai.models.generateContent({
+        model: apiSettings.model,
+        contents: userPrompt,
+        config: { 
+          systemInstruction: systemPrompt, 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                authorName: { type: Type.STRING },
+                content: { type: Type.STRING }
+              },
+              required: ["authorName", "content"]
+            }
           }
         }
-      }
-    });
-    return JSON.parse(response.text || "[]");
+      });
+      // Correctly access .text property
+      return JSON.parse(response.text || "[]");
+    } catch (e) {
+      console.error("Social Post Generation Error:", e);
+      return [];
+    }
+  } else {
+    try {
+      const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
+      return JSON.parse(result || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+};
+
+export const generateRecommendedSocialPosts = async (worldDescription: string, apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys']) => {
+  const systemPrompt = `
+    你是一个社交媒体生成引擎，专门模拟一个真实、充满活力的微博“推荐”流。
+    你需要生成由随机虚拟用户（非角色卡中的固定角色）发布的帖子。
+    
+    内容指导：
+    - 生活碎碎念、职场吐槽、社会热议、萌宠摄影、科技前瞻、美食分享等。
+    - 结合当前世界观：${worldDescription}。
+    - 风格多样：有的幽默，有的严肃，有的感性，有的愤青。
+    - 偶尔包含热门话题标签（如 #今日份快乐# #世界能源危机# 等）。
+    
+    输出要求：
+    1. 每次生成3条不同的动态。
+    2. 每条包含 authorName (富有个性的虚拟网名，如“深夜搬砖工”、“代码诗人”、“吃货喵喵”), authorAvatar (unsplash 头像链接), content (正文内容)。
+    3. 返回标准 JSON 数组。
+  `;
+  
+  const userPrompt = `基于当前世界背景，生成3条随机的大众微博推荐帖子。`;
+
+  if (apiSettings.model.startsWith('gemini')) {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      const response = await ai.models.generateContent({
+        model: apiSettings.model,
+        contents: userPrompt,
+        config: { 
+          systemInstruction: systemPrompt, 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                authorName: { type: Type.STRING },
+                authorAvatar: { type: Type.STRING },
+                content: { type: Type.STRING }
+              },
+              required: ["authorName", "authorAvatar", "content"]
+            }
+          }
+        }
+      });
+      // Correctly access .text property
+      return JSON.parse(response.text || "[]");
+    } catch (e) {
+      console.error("Recommended Posts Error:", e);
+      return [];
+    }
   } else {
     try {
       const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);
@@ -275,55 +405,67 @@ export const generateInteractionForPost = async (
   apiSettings: ApiSettings,
   providerKeys: ApiConfig['providerKeys']
 ) => {
-  const authorName = post.authorId === 'user' ? userProfile.name : (characters.find(c => c.id === post.authorId)?.name || "未知用户");
+  const authorName = post.authorId === 'user' ? userProfile.name : (post.authorName || characters.find(c => c.id === post.authorId)?.name || "匿名用户");
   const charContexts = characters.map(c => `${c.name}: ${c.background}`).join('\n');
   const validNames = characters.map(c => c.name).join(', ');
   
   const systemPrompt = `
-    你是一个社交互动引擎。模拟角色在社交媒体下的评论。
-    **你必须且只能使用以下名单中的角色进行互动**：
+    你是一个社交互动引擎。模拟指定角色在社交媒体下的评论 and 互动。
+    **你必须且只能使用以下名单中的角色进行回复**：
     ${charContexts}
     
-    **严禁使用不在名单中的名字。严禁出现“未知角色”、“网友”、“路人”等名字**。
+    **严禁使用名单外的名字，严禁出现“路人”、“网友”等模糊身份。**
     
-    作者: ${authorName}
-    正文: ${post.content}
-    平台: ${post.platform}
+    当前帖子情境：
+    - 作者: ${authorName}
+    - 内容: ${post.content}
+    - 平台: ${post.platform}
     
-    规则: 生成最多 ${maxReplies} 条评论。角色之间可以根据性格互相回复。
+    互动规则：
+    1. 根据角色的性格和背景，生成最多 ${maxReplies} 条评论。
+    2. 角色可以对作者的内容点赞或评论，也可以在评论区互相回复。
+    3. 评论内容要真实自然，符合角色在该社交平台上的活跃度设定。
   `;
 
-  const userPrompt = `请生成互动评论 JSON。只能从 [${validNames}] 中挑选角色。`;
+  const userPrompt = `请为角色 [${validNames}] 生成对该帖子的互动评论 JSON。`;
 
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: apiSettings.model,
-      contents: userPrompt,
-      config: { 
-        systemInstruction: systemPrompt, 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            interactions: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  authorName: { type: Type.STRING },
-                  content: { type: Type.STRING },
-                  replyToName: { type: Type.STRING }
-                },
-                required: ["authorName", "content"]
+    try {
+      // FIX: Corrected model assignment; avoid using ai.models.get with string as it expects an object.
+      // Use the model provided in the settings as the primary choice.
+      const response = await ai.models.generateContent({
+        model: apiSettings.model,
+        contents: userPrompt,
+        config: { 
+          systemInstruction: systemPrompt, 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              interactions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    authorName: { type: Type.STRING },
+                    content: { type: Type.STRING },
+                    replyToName: { type: Type.STRING }
+                  },
+                  required: ["authorName", "content"]
+                }
               }
-            }
-          },
-          required: ["interactions"]
+            },
+            required: ["interactions"]
+          }
         }
-      }
-    });
-    return JSON.parse(response.text || "{\"interactions\": []}");
+      });
+      // Correctly access .text property
+      return JSON.parse(response.text || "{\"interactions\": []}");
+    } catch (e) {
+      console.error("Gemini Interaction Error:", e);
+      return { interactions: [] };
+    }
   } else {
     try {
       const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, userPrompt);

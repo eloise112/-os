@@ -56,6 +56,8 @@ export interface ChatSession {
 export interface SocialPost {
   id: string;
   authorId: string;
+  authorName?: string;
+  authorAvatar?: string;
   content: string;
   images: string[];
   timestamp: number;
@@ -64,6 +66,7 @@ export interface SocialPost {
   comments: number;
   commentsList?: Comment[];
   platform: 'moments' | 'weibo';
+  isVirtual?: boolean;
 }
 
 export interface HotSearchItem {
@@ -92,7 +95,7 @@ export interface Ticket {
   title: string;
   date: string;
   price: number;
-  category: 'concert' | 'movie' | 'theater';
+  category: 'concert' | 'movie' | 'theater' | 'sports' | 'exhibition';
   image: string;
   isPurchased?: boolean;
 }

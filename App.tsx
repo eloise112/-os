@@ -18,7 +18,9 @@ import {
   generateWorldNewsItems, 
   generateWorldHotSearches, 
   generateWorldSocialPosts, 
-  generateInteractionForPost 
+  generateInteractionForPost,
+  generateWorldTickets,
+  generateRecommendedSocialPosts
 } from './services/gemini';
 
 // Components
@@ -70,6 +72,7 @@ const App: React.FC = () => {
     };
   });
   const [balance, setBalance] = useState(10000);
+  const [loadingStep, setLoadingStep] = useState<string>('');
 
   useEffect(() => {
     localStorage.setItem('gs_chars', JSON.stringify(characters));
@@ -80,6 +83,8 @@ const App: React.FC = () => {
     localStorage.setItem('gs_user', JSON.stringify(userProfile));
     localStorage.setItem('gs_api_config', JSON.stringify(apiConfig));
   }, [characters, world, chats, momentsPosts, weiboPosts, userProfile, apiConfig]);
+
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   const triggerAIInteraction = async (targetPost: SocialPost) => {
     if (!world.enableMomentsInteraction) return;
@@ -97,7 +102,7 @@ const App: React.FC = () => {
       
       if (interaction && interaction.interactions) {
         const aiComments: Comment[] = interaction.interactions
-          .filter((it: any) => characters.some(c => c.name === it.authorName)) // Filter strictly by existing characters
+          .filter((it: any) => characters.some(c => c.name === it.authorName))
           .map((it: any, idx: number) => {
             const char = characters.find(c => c.name === it.authorName);
             return {
@@ -165,7 +170,7 @@ const App: React.FC = () => {
         return;
       }
       const segment = segments[idx];
-      const delay = Math.min(Math.max(segment.text.length * 100, 1000), 4000);
+      const typingDelay = Math.min(Math.max(segment.text.length * 100, 1000), 4000);
       setTimeout(() => {
         const aiMessage: Message = { 
           id: (Date.now() + idx).toString(), 
@@ -185,7 +190,7 @@ const App: React.FC = () => {
           }
         }));
         sendSegment(idx + 1);
-      }, delay);
+      }, typingDelay);
     };
     sendSegment(0);
   };
@@ -229,36 +234,106 @@ const App: React.FC = () => {
   };
 
   const updateNews = async () => {
-    const news = await generateWorldNewsItems(world.worldDescription, apiConfig.world, apiConfig.providerKeys);
-    setWorld(prev => ({ ...prev, news: [...news.map((n:any)=>({...n, id:`n-${Date.now()}-${Math.random()}`, timestamp:Date.now()})), ...prev.news] }));
+    const newsStages = [
+      { label: '正在生成：科技 / 财经 / 政治', filter: '科技, 财经, 政治' },
+      { label: '正在生成：民生 / 社会 / 娱乐', filter: '民生, 社会, 娱乐' }
+    ];
+
+    for (let i = 0; i < newsStages.length; i++) {
+      setLoadingStep(newsStages[i].label);
+      const news = await generateWorldNewsItems(world.worldDescription, apiConfig.world, apiConfig.providerKeys, newsStages[i].filter);
+      const formattedNews = news.map((n: any) => ({ ...n, id: `n-${Date.now()}-${Math.random()}`, timestamp: Date.now() }));
+      setWorld(prev => ({ ...prev, news: [...formattedNews, ...prev.news] }));
+      
+      if (i < newsStages.length - 1) await delay(15000);
+    }
+    setLoadingStep('');
   };
 
   const updateHotSearches = async () => {
+    setLoadingStep('正在刷新热搜榜单...');
     const hot = await generateWorldHotSearches(world.worldDescription, apiConfig.world, apiConfig.providerKeys);
     setWorld(prev => ({ ...prev, hotSearches: hot.map((h:any)=>({...h, id:`h-${Date.now()}-${Math.random()}`})) }));
+    setLoadingStep('');
+  };
+
+  const updateTickets = async () => {
+    const categories: ('concert' | 'movie' | 'theater' | 'sports' | 'exhibition')[] = ['concert', 'theater', 'movie', 'sports', 'exhibition'];
+    const catNames: Record<string, string> = { concert: '演唱会', theater: '话剧', movie: '电影', sports: '体育', exhibition: '展览' };
+
+    for (let i = 0; i < categories.length; i++) {
+      const cat = categories[i];
+      setLoadingStep(`正在生成：${catNames[cat]}票务...`);
+      const tickets = await generateWorldTickets(world.worldDescription, apiConfig.world, apiConfig.providerKeys, cat);
+      const newTickets: Ticket[] = tickets.map(t => ({
+        ...t,
+        id: `t-${Date.now()}-${Math.random()}`,
+        isPurchased: false
+      }));
+      setWorld(prev => ({ ...prev, tickets: [...newTickets, ...prev.tickets] }));
+      
+      if (i < categories.length - 1) await delay(15000);
+    }
+    setLoadingStep('');
   };
 
   const updateSocial = async (platform: 'weibo' | 'moments') => {
-    // Strictly generate and filter by existing characters
-    const generated = await generateWorldSocialPosts(platform, world.worldDescription, characters, apiConfig.world, apiConfig.providerKeys);
-    
-    // Final defensive filter to ensure ONLY current characters are added
-    const formatted = generated
+    if (platform === 'moments') {
+      setLoadingStep('正在生成朋友圈动态...');
+      const generated = await generateWorldSocialPosts('moments', world.worldDescription, characters, apiConfig.world, apiConfig.providerKeys);
+      const formatted = generated
+        .filter((p: any) => characters.some(c => c.name === p.authorName))
+        .map((p: any) => {
+          const char = characters.find(c => c.name === p.authorName)!;
+          return {
+            ...p, id: `p-${Date.now()}-${Math.random()}`, 
+            authorId: char.id, platform: 'moments' as const, images: [], timestamp: Date.now(), 
+            likes: Math.floor(Math.random()*20), likedByMe: false, comments: 0, commentsList: [], isVirtual: false
+          };
+        });
+      setMomentsPosts(prev => [...formatted, ...prev]);
+      formatted.forEach(p => triggerAIInteraction(p));
+      setLoadingStep('');
+      return;
+    }
+
+    // Weibo Update Sequence
+    // 1. Recommended Virtual Posts
+    setLoadingStep('步骤 1/3：正在搜罗推荐微博...');
+    const recommended = await generateRecommendedSocialPosts(world.worldDescription, apiConfig.world, apiConfig.providerKeys);
+    const virtualFormatted = recommended.map((p: any) => ({
+      ...p, id: `p-v-${Date.now()}-${Math.random()}`,
+      authorId: 'virtual', images: [], timestamp: Date.now(), platform: 'weibo' as const,
+      likes: Math.floor(Math.random()*500), likedByMe: false, comments: 0, commentsList: [], isVirtual: true
+    }));
+    setWeiboPosts(prev => [...virtualFormatted, ...prev]);
+    virtualFormatted.forEach(p => triggerAIInteraction(p));
+
+    await delay(15000);
+
+    // 2. Character Posts
+    setLoadingStep('步骤 2/3：正在更新关注角色动态...');
+    const charGen = await generateWorldSocialPosts('weibo', world.worldDescription, characters, apiConfig.world, apiConfig.providerKeys);
+    const charFormatted = charGen
       .filter((p: any) => characters.some(c => c.name === p.authorName))
       .map((p: any) => {
         const char = characters.find(c => c.name === p.authorName)!;
         return {
           ...p, id: `p-${Date.now()}-${Math.random()}`, 
-          authorId: char.id,
-          images: [], timestamp: Date.now(), 
-          likes: Math.floor(Math.random()*100), likedByMe: false, comments: 0, commentsList: [], platform
+          authorId: char.id, platform: 'weibo' as const, images: [], timestamp: Date.now(), 
+          likes: Math.floor(Math.random()*100), likedByMe: false, comments: 0, commentsList: [], isVirtual: false
         };
       });
+    setWeiboPosts(prev => [...charFormatted, ...prev]);
+    charFormatted.forEach(p => triggerAIInteraction(p));
 
-    if (platform === 'weibo') setWeiboPosts(prev => [...formatted, ...prev]);
-    else setMomentsPosts(prev => [...formatted, ...prev]);
-    
-    if (formatted.length > 0) triggerAIInteraction(formatted[0]);
+    await delay(15000);
+
+    // 3. Hot Searches
+    setLoadingStep('步骤 3/3：正在刷新实时热搜...');
+    await updateHotSearches();
+
+    setLoadingStep('');
   };
 
   return (
@@ -319,6 +394,7 @@ const App: React.FC = () => {
               characters={characters} setCharacters={setCharacters} world={world} setWorld={setWorld} 
               apiConfig={apiConfig} setApiConfig={setApiConfig} onBack={() => setActiveApp('home')} 
               onRefreshNews={updateNews} onRefreshHot={updateHotSearches} onRefreshMoments={() => updateSocial('moments')} onRefreshWeibo={() => updateSocial('weibo')}
+              onRefreshTickets={updateTickets} loadingStep={loadingStep}
             />
           ) : (
             <HomeScreen onOpenApp={setActiveApp} worldDate={world.currentDate} />

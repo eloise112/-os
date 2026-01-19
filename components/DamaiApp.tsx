@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Ticket, Character } from '../types';
 
 interface DamaiAppProps {
@@ -13,13 +13,28 @@ interface DamaiAppProps {
 
 type DamaiView = 'list' | 'detail' | 'seats' | 'invite_success';
 
+const CATEGORIES = [
+  { label: '精选', value: 'all' },
+  { label: '演唱会', value: 'concert' },
+  { label: '话剧', value: 'theater' },
+  { label: '电影', value: 'movie' },
+  { label: '体育', value: 'sports' },
+  { label: '展会', value: 'exhibition' }
+];
+
 const DamaiApp: React.FC<DamaiAppProps> = ({ tickets, balance, characters, onBuy, onInvite, onBack }) => {
   const [view, setView] = useState<DamaiView>('list');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [isGrabbing, setIsGrabbing] = useState(false);
   const [grabProgress, setGrabProgress] = useState(0);
   const [showInviteModal, setShowInviteModal] = useState(false);
+
+  const filteredTickets = useMemo(() => {
+    if (activeCategory === 'all') return tickets;
+    return tickets.filter(t => t.category === activeCategory);
+  }, [tickets, activeCategory]);
 
   const ticket = tickets.find(t => t.id === selectedTicketId) || tickets[0];
 
@@ -92,15 +107,16 @@ const DamaiApp: React.FC<DamaiAppProps> = ({ tickets, balance, characters, onBuy
               <div className="flex items-start gap-3">
                  <i className="fas fa-map-marker-alt text-gray-400 mt-1"></i>
                  <div>
-                    <div className="font-bold text-gray-800">梅赛德斯-奔驰文化中心</div>
-                    <div className="text-xs text-gray-400">上海市浦东新区世博大道1200号</div>
+                    <div className="font-bold text-gray-800">场馆所在地</div>
+                    <div className="text-xs text-gray-400">上海市 · 核心演艺区</div>
                  </div>
               </div>
            </div>
            <div className="bg-gray-50 p-4 rounded-xl">
               <div className="font-bold text-sm mb-2">演出介绍</div>
               <p className="text-xs text-gray-500 leading-relaxed">
-                本次演出将带来前所未有的视听盛宴，融合了顶尖舞美设计与沉浸式声场。不论是老粉丝还是新听众，都将在这次独特的旅程中找到属于自己的感动。
+                这场精彩的{CATEGORIES.find(c => c.value === ticket.category)?.label || '活动'}不容错过。
+                顶尖的现场体验，一流的舞美设计，带给您全新的震撼。
               </p>
            </div>
         </div>
@@ -125,7 +141,7 @@ const DamaiApp: React.FC<DamaiAppProps> = ({ tickets, balance, characters, onBuy
                 <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
                    <div className="h-full bg-pink-500 transition-all duration-300" style={{ width: `${grabProgress}%` }}></div>
                 </div>
-                <p className="text-[10px] text-gray-400">前方还有 1,283 人排队，不要离开哦</p>
+                <p className="text-[10px] text-gray-400">正在与数万人同步拼手速...</p>
              </div>
           </div>
         )}
@@ -252,53 +268,66 @@ const DamaiApp: React.FC<DamaiAppProps> = ({ tickets, balance, characters, onBuy
         </div>
       </div>
 
-      <div className="flex p-4 gap-5 overflow-x-auto bg-gray-50 border-b border-gray-100 no-scrollbar">
-        {['精选', '演唱会', '话剧', '电影', '体育', '展会'].map((cat, idx) => (
-          <span key={cat} className={`whitespace-nowrap text-sm font-medium ${idx === 0 ? 'text-[#ff1268] border-b-2 border-[#ff1268]' : 'text-gray-500'}`}>
-            {cat}
-          </span>
+      <div className="flex p-4 gap-5 overflow-x-auto bg-gray-50 border-b border-gray-100 no-scrollbar shrink-0">
+        {CATEGORIES.map((cat) => (
+          <button 
+            key={cat.value} 
+            onClick={() => setActiveCategory(cat.value)}
+            className={`whitespace-nowrap text-sm font-bold transition-colors pb-1 ${activeCategory === cat.value ? 'text-[#ff1268] border-b-2 border-[#ff1268]' : 'text-gray-400'}`}
+          >
+            {cat.label}
+          </button>
         ))}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-7">
-        <div className="bg-gray-100 rounded-2xl h-36 flex items-center justify-center text-gray-300 font-black italic relative overflow-hidden group">
-           <img src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=600" className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-           <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white text-xl z-10 shadow-inner">2025 音乐节季 开启</div>
-        </div>
-
-        {tickets.map(ticket => (
-          <div key={ticket.id} onClick={() => { setSelectedTicketId(ticket.id); setView('detail'); }} className="flex gap-5 group cursor-pointer active:opacity-70 transition-opacity">
-            <div className="relative shrink-0">
-              <img src={ticket.image} className="w-28 h-40 rounded-xl object-cover shadow-lg border border-gray-100" alt="poster" />
-              <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md text-white text-[9px] px-1.5 py-0.5 rounded font-bold">大麦专享</div>
-              {ticket.isPurchased && <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center rounded-xl"><span className="bg-white text-black font-black text-[10px] px-2 py-1 rounded italic uppercase shadow-xl">已购入</span></div>}
-            </div>
-            <div className="flex-1 flex flex-col justify-between py-1">
-              <div>
-                <h4 className="font-extrabold text-[16px] text-gray-900 leading-tight mb-2 group-hover:text-[#ff1268] transition-colors">{ticket.title}</h4>
-                <div className="text-[12px] text-gray-500 flex items-center gap-2 mb-1.5">
-                  <i className="far fa-calendar-alt text-[#ff1268]"></i> {ticket.date}
-                </div>
-                <div className="text-[11px] text-gray-400 flex items-center gap-2">
-                  <i className="fas fa-map-marker-alt"></i> 上海市 | 梅赛德斯-奔驰文化中心
-                </div>
-              </div>
-              <div className="flex items-end justify-between">
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">价格</span>
-                  <span className="text-[#ff1268] font-black text-xl">¥{ticket.price} <span className="text-[11px] font-normal text-gray-400">起</span></span>
-                </div>
-                <div className="flex items-center gap-2">
-                   <button 
-                      className={`px-6 py-2 rounded-full text-[13px] font-black tracking-wide shadow-lg transition-all active:scale-95 ${ticket.isPurchased ? 'bg-gray-100 text-gray-400 shadow-none' : 'bg-gradient-to-r from-[#ff1268] to-[#ff4d88] text-white shadow-pink-200'}`}
-                    >
-                      {ticket.isPurchased ? '已购' : '抢票'}
-                    </button>
-                </div>
-              </div>
-            </div>
+        {activeCategory === 'all' && (
+          <div className="bg-gray-100 rounded-2xl h-36 flex items-center justify-center text-gray-300 font-black italic relative overflow-hidden group">
+            <img src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=600" className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white text-xl z-10 shadow-inner">2025 演出季火热开启</div>
           </div>
-        ))}
+        )}
+
+        {filteredTickets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-300 space-y-4">
+             <i className="fas fa-ticket-alt text-5xl"></i>
+             <div className="font-bold">该分类暂无演出</div>
+          </div>
+        ) : (
+          filteredTickets.map(ticket => (
+            <div key={ticket.id} onClick={() => { setSelectedTicketId(ticket.id); setView('detail'); }} className="flex gap-5 group cursor-pointer active:opacity-70 transition-opacity">
+              <div className="relative shrink-0">
+                <img src={ticket.image} className="w-28 h-40 rounded-xl object-cover shadow-lg border border-gray-100" alt="poster" />
+                <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md text-white text-[9px] px-1.5 py-0.5 rounded font-bold">{CATEGORIES.find(c => c.value === ticket.category)?.label}</div>
+                {ticket.isPurchased && <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center rounded-xl"><span className="bg-white text-black font-black text-[10px] px-2 py-1 rounded italic uppercase shadow-xl">已购入</span></div>}
+              </div>
+              <div className="flex-1 flex flex-col justify-between py-1">
+                <div>
+                  <h4 className="font-extrabold text-[16px] text-gray-900 leading-tight mb-2 group-hover:text-[#ff1268] transition-colors">{ticket.title}</h4>
+                  <div className="text-[12px] text-gray-500 flex items-center gap-2 mb-1.5">
+                    <i className="far fa-calendar-alt text-[#ff1268]"></i> {ticket.date}
+                  </div>
+                  <div className="text-[11px] text-gray-400 flex items-center gap-2">
+                    <i className="fas fa-map-marker-alt"></i> 上海市 | 核心场馆
+                  </div>
+                </div>
+                <div className="flex items-end justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">价格</span>
+                    <span className="text-[#ff1268] font-black text-xl">¥{ticket.price} <span className="text-[11px] font-normal text-gray-400">起</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                     <button 
+                        className={`px-6 py-2 rounded-full text-[13px] font-black tracking-wide shadow-lg transition-all active:scale-95 ${ticket.isPurchased ? 'bg-gray-100 text-gray-400 shadow-none' : 'bg-gradient-to-r from-[#ff1268] to-[#ff4d88] text-white shadow-pink-200'}`}
+                      >
+                        {ticket.isPurchased ? '已购' : '抢票'}
+                      </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

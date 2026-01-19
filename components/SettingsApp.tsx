@@ -13,6 +13,8 @@ interface SettingsAppProps {
   onRefreshHot: () => Promise<void>;
   onRefreshMoments: () => Promise<void>;
   onRefreshWeibo: () => Promise<void>;
+  onRefreshTickets: () => Promise<void>;
+  loadingStep: string;
   onBack: () => void;
 }
 
@@ -65,17 +67,17 @@ const FrequencySelector: React.FC<{ value: Character['momentsFrequency'], onChan
 
 const SettingsApp: React.FC<SettingsAppProps> = ({ 
   characters, setCharacters, world, setWorld, apiConfig, setApiConfig, 
-  onRefreshNews, onRefreshHot, onRefreshMoments, onRefreshWeibo, onBack 
+  onRefreshNews, onRefreshHot, onRefreshMoments, onRefreshWeibo, onRefreshTickets, loadingStep, onBack 
 }) => {
   const [activeTab, setActiveTab] = useState<'chars' | 'world' | 'api'>('chars');
-  const [loading, setLoading] = useState<string | null>(null);
+  const [internalLoading, setInternalLoading] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [editingChar, setEditingChar] = useState<Partial<Character> | null>(null);
 
-  const handleRefresh = async (type: string, fn: () => Promise<void>) => {
-    setLoading(type);
+  const handleRefreshAction = async (type: string, fn: () => Promise<void>) => {
+    setInternalLoading(type);
     try { await fn(); } catch (e) { alert("更新失败，请检查网络或API配置"); }
-    setLoading(null);
+    setInternalLoading(null);
   };
 
   const updateApiSetting = (category: 'chat' | 'world', field: keyof ApiSettings, value: string) => {
@@ -153,7 +155,6 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
           <button onClick={handleSaveChar} className="text-[#007aff] font-bold disabled:opacity-30" disabled={!editingChar.name}>保存</button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Avatar Section */}
           <div className="bg-white p-6 rounded-2xl shadow-sm flex flex-col items-center gap-4">
             <div className="relative group">
               <img src={editingChar.avatar} className="w-24 h-24 rounded-2xl object-cover shadow-md border-2 border-white" alt="avatar" />
@@ -175,8 +176,6 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
               />
             </div>
           </div>
-
-          {/* Basic Info Section */}
           <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
             <div className="space-y-1">
               <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">角色姓名</label>
@@ -197,27 +196,7 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
                 placeholder="描述角色的社会地位、性格、往事..."
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">偏好/厌恶</label>
-              <textarea 
-                value={editingChar.preferences} 
-                onChange={e => setEditingChar({ ...editingChar, preferences: e.target.value })}
-                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300 min-h-[60px]"
-                placeholder="喜欢什么，讨厌什么..."
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">当前剧情线</label>
-              <textarea 
-                value={editingChar.storyline} 
-                onChange={e => setEditingChar({ ...editingChar, storyline: e.target.value })}
-                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300 min-h-[60px]"
-                placeholder="目前正处于什么样的关系中..."
-              />
-            </div>
           </div>
-
-          {/* Behavioral Settings Section */}
           <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
             <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">行为偏好 (Behavior)</label>
             <FrequencySelector 
@@ -230,61 +209,13 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
               value={editingChar.weiboFrequency} 
               onChange={v => setEditingChar({ ...editingChar, weiboFrequency: v })} 
             />
-            <div className="pt-2">
-              <ToggleSwitch 
-                isOn={editingChar.proactiveTicketing || false} 
-                onToggle={() => setEditingChar({ ...editingChar, proactiveTicketing: !editingChar.proactiveTicketing })}
-                label="主动约会/购票"
-                icon="fas fa-calendar-check"
-                color="bg-pink-500"
-              />
-              <p className="text-[9px] text-gray-400 px-1 mt-1 leading-tight">
-                开启后，AI 将会根据剧情主动在对话中发起活动邀约或在后台抢购大麦票务。
-              </p>
-            </div>
           </div>
-
-          {/* Perception Section */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">感知设定 (AI Memory)</label>
-            <div className="divide-y divide-gray-50">
-              <ToggleSwitch 
-                isOn={editingChar.perceiveWorldNews || false} 
-                onToggle={() => setEditingChar({ ...editingChar, perceiveWorldNews: !editingChar.perceiveWorldNews })}
-                label="感知世界新闻"
-                icon="fas fa-globe-americas"
-                color="bg-red-500"
-              />
-              <ToggleSwitch 
-                isOn={editingChar.perceiveSocialMedia || false} 
-                onToggle={() => setEditingChar({ ...editingChar, perceiveSocialMedia: !editingChar.perceiveSocialMedia })}
-                label="浏览社交媒体"
-                icon="fas fa-hashtag"
-                color="bg-orange-500"
-              />
-              <ToggleSwitch 
-                isOn={editingChar.perceiveUserPersona || false} 
-                onToggle={() => setEditingChar({ ...editingChar, perceiveUserPersona: !editingChar.perceiveUserPersona })}
-                label="洞悉用户人设"
-                icon="fas fa-id-badge"
-                color="bg-purple-500"
-              />
-            </div>
-          </div>
-
-          {/* Delete Button */}
-          {characters.find(c => c.id === editingChar.id) && (
-            <button 
-              onClick={() => handleDeleteChar(editingChar.id!)}
-              className="w-full bg-white p-4 rounded-xl shadow-sm text-red-500 font-bold text-sm active:bg-red-50 transition-colors"
-            >
-              删除该角色
-            </button>
-          )}
         </div>
       </div>
     );
   }
+
+  const isLoading = !!internalLoading || !!loadingStep;
 
   return (
     <div className="h-full flex flex-col bg-[#f2f2f7] animate-in slide-in-from-right duration-300">
@@ -306,25 +237,34 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
         {activeTab === 'world' && (
           <div className="space-y-6">
             <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-              <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block">手动触发更新</label>
+              <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block">分步手动触发更新</label>
+              
+              {isLoading && (
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-center gap-3 animate-in fade-in zoom-in duration-300">
+                  <i className="fas fa-circle-notch animate-spin text-blue-500"></i>
+                  <div className="text-xs font-bold text-blue-700">{loadingStep || '正在处理中...'}</div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => handleRefresh('news', onRefreshNews)} disabled={!!loading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50">
-                   <i className={`fas fa-newspaper text-red-500 ${loading === 'news' ? 'animate-pulse' : ''}`}></i>
-                   <span className="text-[11px] font-bold text-gray-600">刷新新闻</span>
+                <button onClick={() => handleRefreshAction('news', onRefreshNews)} disabled={isLoading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50">
+                   <i className={`fas fa-newspaper text-red-500`}></i>
+                   <span className="text-[11px] font-bold text-gray-600">分步刷新新闻</span>
                 </button>
-                <button onClick={() => handleRefresh('hot', onRefreshHot)} disabled={!!loading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50">
-                   <i className={`fas fa-fire text-orange-500 ${loading === 'hot' ? 'animate-pulse' : ''}`}></i>
-                   <span className="text-[11px] font-bold text-gray-600">刷新热搜</span>
+                <button onClick={() => handleRefreshAction('tickets', onRefreshTickets)} disabled={isLoading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50">
+                   <i className={`fas fa-ticket-alt text-pink-500`}></i>
+                   <span className="text-[11px] font-bold text-gray-600">分步刷新票务</span>
                 </button>
-                <button onClick={() => handleRefresh('moments', onRefreshMoments)} disabled={!!loading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50">
-                   <i className={`fas fa-camera text-green-500 ${loading === 'moments' ? 'animate-pulse' : ''}`}></i>
+                <button onClick={() => handleRefreshAction('weibo', onRefreshWeibo)} disabled={isLoading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50 col-span-2">
+                   <i className={`fab fa-weibo text-orange-500`}></i>
+                   <span className="text-[11px] font-bold text-gray-600">全面刷新微博 (3阶段)</span>
+                </button>
+                <button onClick={() => handleRefreshAction('moments', onRefreshMoments)} disabled={isLoading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50 col-span-2">
+                   <i className={`fas fa-camera text-green-500`}></i>
                    <span className="text-[11px] font-bold text-gray-600">刷新朋友圈</span>
                 </button>
-                <button onClick={() => handleRefresh('weibo', onRefreshWeibo)} disabled={!!loading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50">
-                   <i className={`fab fa-weibo text-blue-500 ${loading === 'weibo' ? 'animate-pulse' : ''}`}></i>
-                   <span className="text-[11px] font-bold text-gray-600">刷新微博</span>
-                </button>
               </div>
+              <p className="text-[9px] text-gray-400 px-1 leading-relaxed italic">* 为了模拟真实更新感，每阶段更新后会停顿 15 秒，请耐心等待。</p>
             </div>
             <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
               <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block">基础世界观描述</label>
@@ -369,7 +309,6 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
 
         {activeTab === 'api' && (
            <div className="space-y-6">
-              {/* Central Key Vault Card */}
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
                 <div className="bg-gradient-to-r from-gray-800 to-gray-700 p-4 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white">
@@ -411,9 +350,6 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
                       className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300 transition-all font-mono"
                     />
                   </div>
-                  <p className="text-[10px] text-gray-400 italic bg-gray-50 p-2 rounded-lg border border-dashed border-gray-200">
-                    * 在此填入密钥后，选用对应模型时将自动应用。
-                  </p>
                 </div>
               </div>
 
@@ -422,20 +358,17 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
                   <i className="fas fa-robot text-blue-500"></i>
                   <label className="text-[12px] font-black text-gray-800 uppercase tracking-wide">对话模型配置</label>
                 </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[11px] text-gray-400 mb-1 block">选择模型</label>
-                    <select 
-                      value={apiConfig.chat.model}
-                      onChange={e => updateApiSetting('chat', 'model', e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300"
-                    >
-                      {SUPPORTED_MODELS.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="text-[11px] text-gray-400 mb-1 block">选择模型</label>
+                  <select 
+                    value={apiConfig.chat.model}
+                    onChange={e => updateApiSetting('chat', 'model', e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300"
+                  >
+                    {SUPPORTED_MODELS.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -444,29 +377,18 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
                   <i className="fas fa-globe-asia text-green-500"></i>
                   <label className="text-[12px] font-black text-gray-800 uppercase tracking-wide">世界生成配置</label>
                 </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[11px] text-gray-400 mb-1 block">选择模型</label>
-                    <select 
-                      value={apiConfig.world.model}
-                      onChange={e => updateApiSetting('world', 'model', e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300"
-                    >
-                      {SUPPORTED_MODELS.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="text-[11px] text-gray-400 mb-1 block">选择模型</label>
+                  <select 
+                    value={apiConfig.world.model}
+                    onChange={e => updateApiSetting('world', 'model', e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300"
+                  >
+                    {SUPPORTED_MODELS.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-
-              <div className="px-2">
-                <p className="text-[10px] text-gray-400 leading-relaxed italic">
-                  * Gemini 模型将自动使用系统内置 API Key。<br/>
-                  * 密钥库中的密钥优先级低于单项配置（如有）。<br/>
-                  * 建议：对话使用 Pro 模型，日常生成使用 Flash 模型。
-                </p>
               </div>
            </div>
         )}

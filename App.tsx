@@ -9,7 +9,8 @@ import {
   SocialPost,
   UserProfile,
   ApiConfig,
-  Comment
+  Comment,
+  Ticket
 } from './types';
 import { INITIAL_CHARACTERS, INITIAL_WORLD } from './constants';
 import { 
@@ -128,36 +129,71 @@ const App: React.FC = () => {
         characterId: charId,
         messages: [...(prev[charId]?.messages || []), newMessage],
         lastMessageAt: Date.now(),
-        unreadCount: 0 // Reset when user sends message
+        unreadCount: 0,
+        isTyping: true
       }
     }));
 
     if (type === 'transfer' && amount) setBalance(b => b - amount);
 
     const character = characters.find(c => c.id === charId)!;
-    const history = chats[charId]?.messages || [];
+    const history = (chats[charId]?.messages || []);
     
-    const responseText = await generateCharacterResponse(
+    // Character response logic
+    const fullResponse = await generateCharacterResponse(
       character, 
-      history, 
+      history.concat(newMessage), 
       world.worldDescription, 
       text, 
       userProfile, 
       apiConfig.chat,
       apiConfig.providerKeys
     );
-    
-    const aiMessage: Message = { id: (Date.now() + 1).toString(), senderId: charId, text: responseText, type: 'text', timestamp: Date.now() + 1 };
 
-    setChats(prev => ({
-      ...prev,
-      [charId]: {
-        ...prev[charId],
-        messages: [...(prev[charId]?.messages || []), aiMessage],
-        lastMessageAt: Date.now() + 1,
-        unreadCount: (activeApp === 'wechat' ? 0 : (prev[charId]?.unreadCount || 0) + 1)
+    // Split logic: split by common sentence delimiters but keep them
+    const segments = fullResponse.split(/([。！？…\n]+)/).filter(s => s.trim().length > 0);
+    const combinedSegments: string[] = [];
+    for (let i = 0; i < segments.length; i += 2) {
+      combinedSegments.push((segments[i] + (segments[i + 1] || '')).trim());
+    }
+
+    const sendSegment = async (idx: number) => {
+      if (idx >= combinedSegments.length) {
+        setChats(prev => ({
+          ...prev,
+          [charId]: { ...prev[charId], isTyping: false }
+        }));
+        return;
       }
-    }));
+
+      const segmentText = combinedSegments[idx];
+      // Simulate reading time + typing time
+      const delay = Math.min(Math.max(segmentText.length * 150, 1500), 5000);
+
+      setTimeout(() => {
+        const aiMessage: Message = { id: (Date.now() + idx).toString(), senderId: charId, text: segmentText, type: 'text', timestamp: Date.now() };
+        
+        setChats(prev => ({
+          ...prev,
+          [charId]: {
+            ...prev[charId],
+            messages: [...(prev[charId]?.messages || []), aiMessage],
+            lastMessageAt: Date.now(),
+            unreadCount: (activeApp === 'wechat' ? 0 : (prev[charId]?.unreadCount || 0) + 1),
+            isTyping: (idx < combinedSegments.length - 1)
+          }
+        }));
+
+        sendSegment(idx + 1);
+      }, delay);
+    };
+
+    sendSegment(0);
+  };
+
+  const handleInvite = async (charId: string, ticket: Ticket) => {
+    const inviteText = `我刚刚买了《${ticket.title}》的票，${ticket.date}在上海。要不要一起去？我看好位置都选好了！`;
+    await handleSendMessage(charId, inviteText);
   };
 
   const handleAddPost = async (content: string, platform: 'moments' | 'weibo') => {
@@ -241,13 +277,19 @@ const App: React.FC = () => {
               onBack={() => setActiveApp('home')} 
             />
           ) : activeApp === 'damai' ? (
-            <DamaiApp tickets={world.tickets} balance={balance} onBuy={id => {
-              const ticket = world.tickets.find(t => t.id === id);
-              if (ticket && balance >= ticket.price) {
-                setBalance(b => b - ticket.price);
-                setWorld(prev => ({ ...prev, tickets: prev.tickets.map(t => t.id === id ? { ...t, isPurchased: true } : t) }));
-              }
-            }} onBack={() => setActiveApp('home')} />
+            <DamaiApp 
+              tickets={world.tickets} balance={balance} 
+              characters={characters}
+              onBuy={id => {
+                const ticket = world.tickets.find(t => t.id === id);
+                if (ticket && balance >= ticket.price) {
+                  setBalance(b => b - ticket.price);
+                  setWorld(prev => ({ ...prev, tickets: prev.tickets.map(t => t.id === id ? { ...t, isPurchased: true } : t) }));
+                }
+              }} 
+              onInvite={handleInvite}
+              onBack={() => setActiveApp('home')} 
+            />
           ) : activeApp === 'news' ? (
             <NewsApp news={world.news} onUpdate={updateNews} onBack={() => setActiveApp('home')} />
           ) : activeApp === 'settings' ? (

@@ -12,7 +12,10 @@ export const INITIAL_CHARACTERS: Character[] = [
     storyline: '目前由于一次项目竞争，你们处于某种微妙的博弈关系中，但他的话语间似乎带着某种怀旧。',
     perceiveWorldNews: true,
     perceiveSocialMedia: true,
-    perceiveUserPersona: true
+    perceiveUserPersona: true,
+    momentsFrequency: 'low',
+    weiboFrequency: 'medium',
+    proactiveTicketing: true
   },
   {
     id: 'char2',
@@ -23,7 +26,10 @@ export const INITIAL_CHARACTERS: Character[] = [
     storyline: '她最近在帮你调查一个神秘包裹的来源。',
     perceiveWorldNews: true,
     perceiveSocialMedia: true,
-    perceiveUserPersona: true
+    perceiveUserPersona: true,
+    momentsFrequency: 'high',
+    weiboFrequency: 'high',
+    proactiveTicketing: false
   }
 ];
 
@@ -46,7 +52,7 @@ export const INITIAL_WORLD: WorldState = {
       date: '2025-08-20',
       price: 1280,
       category: 'concert',
-      image: 'https://picsum.photos/seed/concert1/300/400'
+      image: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=400'
     },
     {
       id: 't2',
@@ -54,7 +60,31 @@ export const INITIAL_WORLD: WorldState = {
       date: '2025-06-01',
       price: 90,
       category: 'movie',
-      image: 'https://picsum.photos/seed/movie1/300/400'
+      image: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=400'
+    },
+    {
+      id: 't3',
+      title: '猫和老鼠 - 经典交响音乐会',
+      date: '2025-07-12',
+      price: 480,
+      category: 'concert',
+      image: 'https://images.unsplash.com/photo-1507838153414-b4b713384a76?q=80&w=400'
+    },
+    {
+      id: 't4',
+      title: '《暗恋桃花源》- 30周年纪念版',
+      date: '2025-09-05',
+      price: 680,
+      category: 'theater',
+      image: 'https://images.unsplash.com/photo-1503095396549-80705a618335?q=80&w=400'
+    },
+    {
+      id: 't5',
+      title: '明日世界 - 沉浸式科技艺术展',
+      date: '2025-10-10',
+      price: 150,
+      category: 'theater',
+      image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=400'
     }
   ],
   hotSearches: [

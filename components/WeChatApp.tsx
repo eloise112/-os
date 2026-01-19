@@ -19,35 +19,16 @@ interface WeChatAppProps {
 
 type WeChatView = 'chats' | 'contacts' | 'discover' | 'moments' | 'profile' | 'chatting' | 'char_detail' | 'create_char' | 'posting' | 'search' | 'edit_profile' | 'location_picker';
 
-const STICKERS = ['😊', '😂', '🥺', '😎', '🤔', '🔥', '❤️', '👍', '🐱', '🐶', '🍕', '🎉', '🌹', '💔', '😭', '😡', '😱', '🤫', '🍺', '🌈'];
-
-const SUGGESTED_LOCATIONS = [
-  '极光大厦 - 顶层露台', '霓虹街 207 号', '赛博咖啡馆 - 5 号桌', '新纪元中心 - 空中花园', '老城旧事 - 巷口茶摊', '量子图书馆 - 禁书区'
-];
-
 const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdateUser, onSendMessage, onAddCharacter, onAddPost, onAddComment, onBack, onClearUnread, balance, posts }) => {
   const [view, setView] = useState<WeChatView>('chats');
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [input, setInput] = useState('');
-  const [showPlusMenu, setShowPlusMenu] = useState(false);
-  const [showStickers, setShowStickers] = useState(false);
-  const [transferAmount, setTransferAmount] = useState('100');
-  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState('');
-  const [postInput, setPostInput] = useState('');
   const [commentInput, setCommentInput] = useState('');
   const [activeCommentPost, setActiveCommentPost] = useState<{ id: string, replyToName?: string } | null>(null);
 
   const [newChar, setNewChar] = useState<Partial<Character>>({
     name: '', avatar: `https://picsum.photos/seed/${Date.now()}/200/200`, background: '', preferences: '', storyline: '', firstMessage: '你好。'
   });
-
-  const [customLocation, setCustomLocation] = useState('');
-  const [selectedLocationIdx, setSelectedLocationIdx] = useState<number | null>(null);
-
-  const [editingName, setEditingName] = useState(user.name);
-  const [editingAvatar, setEditingAvatar] = useState(user.avatar);
-  const [editingPersona, setEditingPersona] = useState(user.persona);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -58,13 +39,7 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
 
   useEffect(() => {
     if (view === 'search') setTimeout(() => searchInputRef.current?.focus(), 100);
-    if (view === 'edit_profile') {
-      setEditingName(user.name); setEditingAvatar(user.avatar); setEditingPersona(user.persona);
-    }
-    if (view === 'location_picker') {
-        setCustomLocation(''); setSelectedLocationIdx(null);
-    }
-  }, [view, user]);
+  }, [view]);
 
   useEffect(() => {
     if (view === 'chatting' && selectedCharId) {
@@ -74,7 +49,7 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [chats, selectedCharId, view]);
+  }, [chats, selectedCharId, view, session?.isTyping]);
 
   useEffect(() => {
     if (activeCommentPost) commentInputRef.current?.focus();
@@ -185,8 +160,11 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
       <div className="h-full flex flex-col bg-[#ededed] animate-in slide-in-from-right duration-300">
         <div className="p-4 pt-11 bg-[#ededed] border-b border-gray-200 flex items-center shrink-0">
           <button onClick={() => setView('chats')} className="mr-4 text-gray-700"><i className="fas fa-chevron-left text-lg"></i></button>
-          <div className="flex-1 text-center font-bold">{selectedChar.name}</div>
-          <button className="w-8 text-right text-gray-700" onClick={() => setView('char_detail')}><i className="fas fa-ellipsis-h"></i></button>
+          <div className="flex-1 text-center font-bold">
+            {selectedChar.name}
+            {session?.isTyping && <div className="text-[10px] text-gray-400 font-normal mt-[-2px] animate-pulse">对方正在输入...</div>}
+          </div>
+          <button className="w-8 text-right text-gray-700"><i className="fas fa-ellipsis-h"></i></button>
         </div>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-5">
           {session?.messages.map(m => {
@@ -209,7 +187,6 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
     );
   }
 
-  // Fix: Explicitly cast Object.values(chats) to ChatSession[] to avoid property access error on 'unknown'
   const unreadTotal = (Object.values(chats) as ChatSession[]).reduce((sum, s) => sum + (s.unreadCount || 0), 0);
 
   return (
@@ -233,7 +210,10 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
               </div>
               <div className="flex-1 text-left overflow-hidden">
                 <div className="flex justify-between items-center">
-                  <span className="font-semibold text-[16px] truncate">{char.name}</span>
+                  <span className="font-semibold text-[16px] truncate">
+                    {char.name}
+                    {s?.isTyping && <span className="text-[10px] text-green-500 ml-2 font-normal">输入中...</span>}
+                  </span>
                   {s?.lastMessageAt && <span className="text-[11px] text-gray-400">{new Date(s.lastMessageAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>}
                 </div>
                 <div className="text-[14px] text-gray-400 truncate">{lastMsg ? lastMsg.text : "点击聊天..."}</div>

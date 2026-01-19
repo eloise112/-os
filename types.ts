@@ -50,6 +50,7 @@ export interface ChatSession {
   messages: Message[];
   lastMessageAt: number;
   unreadCount?: number;
+  isTyping?: boolean;
 }
 
 export interface SocialPost {

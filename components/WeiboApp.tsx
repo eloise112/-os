@@ -8,10 +8,11 @@ interface WeiboAppProps {
   world: WorldState;
   onAddPost: (content: string) => void;
   onAddComment: (postId: string, content: string, replyToName?: string) => void;
+  onToggleLike: (postId: string) => void;
   onBack: () => void;
 }
 
-const WeiboApp: React.FC<WeiboAppProps> = ({ posts, characters, world, onAddPost, onAddComment, onBack }) => {
+const WeiboApp: React.FC<WeiboAppProps> = ({ posts, characters, world, onAddPost, onAddComment, onToggleLike, onBack }) => {
   const [activeTab, setActiveTab] = useState<'feed' | 'hot'>('feed');
   const [isPosting, setIsPosting] = useState(false);
   const [postContent, setPostContent] = useState('');
@@ -85,7 +86,7 @@ const WeiboApp: React.FC<WeiboAppProps> = ({ posts, characters, world, onAddPost
                     <div className="flex border-t pt-2 text-gray-400 text-xs">
                        <button className="flex-1 py-1"><i className="far fa-share-square"></i> 分享</button>
                        <button onClick={(e) => { e.stopPropagation(); setCommentingId(post.id); }} className="flex-1 py-1"><i className="far fa-comment"></i> {post.commentsList?.length || 0}</button>
-                       <button className="flex-1 py-1"><i className="far fa-thumbs-up"></i> {post.likes}</button>
+                       <button onClick={(e) => { e.stopPropagation(); onToggleLike(post.id); }} className="flex-1 py-1"><i className="far fa-thumbs-up"></i> {post.likes}</button>
                     </div>
                     {post.commentsList && post.commentsList.length > 0 && (
                       <div className="mt-2 bg-gray-50 p-2 rounded space-y-2">

@@ -60,6 +60,7 @@ export interface SocialPost {
   images: string[];
   timestamp: number;
   likes: number;
+  likedByMe?: boolean;
   comments: number;
   commentsList?: Comment[];
   platform: 'moments' | 'weibo';

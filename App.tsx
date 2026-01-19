@@ -96,17 +96,19 @@ const App: React.FC = () => {
       );
       
       if (interaction && interaction.interactions) {
-        const aiComments: Comment[] = interaction.interactions.map((it: any, idx: number) => {
-          const char = characters.find(c => c.name === it.authorName);
-          return {
-            id: `c-ai-${Date.now()}-${idx}`,
-            authorId: char?.id || 'unknown',
-            authorName: it.authorName,
-            content: it.content,
-            timestamp: Date.now() + (idx * 500),
-            replyToName: it.replyToName
-          };
-        });
+        const aiComments: Comment[] = interaction.interactions
+          .filter((it: any) => characters.some(c => c.name === it.authorName)) // Filter strictly by existing characters
+          .map((it: any, idx: number) => {
+            const char = characters.find(c => c.name === it.authorName);
+            return {
+              id: `c-ai-${Date.now()}-${idx}`,
+              authorId: char?.id || 'unknown',
+              authorName: it.authorName,
+              content: it.content,
+              timestamp: Date.now() + (idx * 500),
+              replyToName: it.replyToName
+            };
+          });
         
         const setter = targetPost.platform === 'weibo' ? setWeiboPosts : setMomentsPosts;
         setter(prev => prev.map(p => {
@@ -117,7 +119,7 @@ const App: React.FC = () => {
           return p;
         }));
       }
-    }, 1500);
+    }, 2000);
   };
 
   const handleSendMessage = async (charId: string, text: string, type: Message['type'] = 'text', amount?: number, locationName?: string, autoReply: boolean = false) => {
@@ -135,26 +137,18 @@ const App: React.FC = () => {
     }));
 
     if (type === 'transfer' && amount) setBalance(b => b - amount);
-
-    if (autoReply) {
-      await handleTriggerAIResponse(charId);
-    }
+    if (autoReply) await handleTriggerAIResponse(charId);
   };
 
   const handleTriggerAIResponse = async (charId: string) => {
     const currentSession = chats[charId];
     if (!currentSession || currentSession.isTyping) return;
 
-    setChats(prev => ({
-      ...prev,
-      [charId]: { ...prev[charId], isTyping: true }
-    }));
-
+    setChats(prev => ({ ...prev, [charId]: { ...prev[charId], isTyping: true } }));
     const character = characters.find(c => c.id === charId)!;
     const history = (chats[charId]?.messages || []);
     const lastUserMessage = history.filter(m => m.senderId === 'user').slice(-1)[0]?.text || "...";
     
-    // Character response logic
     const segments = await generateCharacterResponse(
       character, 
       history, 
@@ -167,16 +161,11 @@ const App: React.FC = () => {
 
     const sendSegment = async (idx: number) => {
       if (idx >= segments.length) {
-        setChats(prev => ({
-          ...prev,
-          [charId]: { ...prev[charId], isTyping: false }
-        }));
+        setChats(prev => ({ ...prev, [charId]: { ...prev[charId], isTyping: false } }));
         return;
       }
-
       const segment = segments[idx];
       const delay = Math.min(Math.max(segment.text.length * 100, 1000), 4000);
-
       setTimeout(() => {
         const aiMessage: Message = { 
           id: (Date.now() + idx).toString(), 
@@ -185,7 +174,6 @@ const App: React.FC = () => {
           type: segment.type === 'action' ? 'action' : 'text', 
           timestamp: Date.now() 
         };
-        
         setChats(prev => ({
           ...prev,
           [charId]: {
@@ -196,23 +184,16 @@ const App: React.FC = () => {
             isTyping: (idx < segments.length - 1)
           }
         }));
-
         sendSegment(idx + 1);
       }, delay);
     };
-
     sendSegment(0);
-  };
-
-  const handleInvite = async (charId: string, ticket: Ticket) => {
-    const inviteText = `我刚刚买了《${ticket.title}》的票，${ticket.date}在上海。要不要一起去？我看好位置都选好了！`;
-    await handleSendMessage(charId, inviteText, 'text', undefined, undefined, true);
   };
 
   const handleAddPost = async (content: string, platform: 'moments' | 'weibo') => {
     const newPost: SocialPost = { 
       id: `p-${Date.now()}`, authorId: 'user', content, images: [], timestamp: Date.now(), 
-      likes: 0, comments: 0, commentsList: [], platform
+      likes: 0, likedByMe: false, comments: 0, commentsList: [], platform
     };
     if (platform === 'moments') setMomentsPosts(p => [newPost, ...p]);
     else setWeiboPosts(p => [newPost, ...p]);
@@ -236,6 +217,17 @@ const App: React.FC = () => {
     });
   };
 
+  const handleToggleLike = (postId: string, platform: 'moments' | 'weibo') => {
+    const setter = platform === 'weibo' ? setWeiboPosts : setMomentsPosts;
+    setter(prev => prev.map(p => {
+        if (p.id === postId) {
+            const isLiked = !p.likedByMe;
+            return { ...p, likedByMe: isLiked, likes: isLiked ? p.likes + 1 : Math.max(0, p.likes - 1) };
+        }
+        return p;
+    }));
+  };
+
   const updateNews = async () => {
     const news = await generateWorldNewsItems(world.worldDescription, apiConfig.world, apiConfig.providerKeys);
     setWorld(prev => ({ ...prev, news: [...news.map((n:any)=>({...n, id:`n-${Date.now()}-${Math.random()}`, timestamp:Date.now()})), ...prev.news] }));
@@ -247,14 +239,26 @@ const App: React.FC = () => {
   };
 
   const updateSocial = async (platform: 'weibo' | 'moments') => {
-    const posts = await generateWorldSocialPosts(platform, world.worldDescription, characters, apiConfig.world, apiConfig.providerKeys);
-    const formatted = posts.map((p:any) => ({
-      ...p, id: `p-${Date.now()}-${Math.random()}`, 
-      authorId: characters.find(c => c.name === p.authorName)?.id || 'unknown',
-      images: [], timestamp: Date.now(), likes: Math.floor(Math.random()*100), comments: 0, commentsList: [], platform
-    }));
+    // Strictly generate and filter by existing characters
+    const generated = await generateWorldSocialPosts(platform, world.worldDescription, characters, apiConfig.world, apiConfig.providerKeys);
+    
+    // Final defensive filter to ensure ONLY current characters are added
+    const formatted = generated
+      .filter((p: any) => characters.some(c => c.name === p.authorName))
+      .map((p: any) => {
+        const char = characters.find(c => c.name === p.authorName)!;
+        return {
+          ...p, id: `p-${Date.now()}-${Math.random()}`, 
+          authorId: char.id,
+          images: [], timestamp: Date.now(), 
+          likes: Math.floor(Math.random()*100), likedByMe: false, comments: 0, commentsList: [], platform
+        };
+      });
+
     if (platform === 'weibo') setWeiboPosts(prev => [...formatted, ...prev]);
     else setMomentsPosts(prev => [...formatted, ...prev]);
+    
+    if (formatted.length > 0) triggerAIInteraction(formatted[0]);
   };
 
   return (
@@ -278,6 +282,7 @@ const App: React.FC = () => {
               onSendMessage={handleSendMessage} onTriggerAI={handleTriggerAIResponse} onAddCharacter={prev => setCharacters(p => [...p, prev])}
               onAddPost={content => handleAddPost(content, 'moments')}
               onAddComment={(id, content, reply) => handleAddComment(id, content, 'moments', reply)}
+              onToggleLike={(id) => handleToggleLike(id, 'moments')}
               onBack={() => setActiveApp('home')} 
               onClearUnread={(id) => setChats(prev => prev[id] ? {...prev, [id]: {...prev[id], unreadCount: 0}} : prev)}
               balance={balance} posts={momentsPosts} 
@@ -287,6 +292,7 @@ const App: React.FC = () => {
               posts={weiboPosts} characters={characters} world={world}
               onAddPost={content => handleAddPost(content, 'weibo')}
               onAddComment={(id, content, reply) => handleAddComment(id, content, 'weibo', reply)}
+              onToggleLike={(id) => handleToggleLike(id, 'weibo')}
               onBack={() => setActiveApp('home')} 
             />
           ) : activeApp === 'damai' ? (
@@ -300,7 +306,10 @@ const App: React.FC = () => {
                   setWorld(prev => ({ ...prev, tickets: prev.tickets.map(t => t.id === id ? { ...t, isPurchased: true } : t) }));
                 }
               }} 
-              onInvite={handleInvite}
+              onInvite={(id, t) => {
+                 const inviteText = `我刚刚买了《${t.title}》的票，${t.date}在上海。要不要一起去？我看好位置都选好了！`;
+                 handleSendMessage(id, inviteText, 'text', undefined, undefined, true);
+              }}
               onBack={() => setActiveApp('home')} 
             />
           ) : activeApp === 'news' ? (

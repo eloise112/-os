@@ -6,6 +6,7 @@ export interface Character {
   background: string;
   preferences: string;
   storyline: string;
+  firstMessage?: string;
   isFavorite?: boolean;
   // Perception settings
   perceiveWorldNews?: boolean;
@@ -18,6 +19,15 @@ export interface UserProfile {
   wechatId: string;
   avatar: string;
   persona: string;
+}
+
+export interface Comment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  timestamp: number;
+  replyToName?: string;
 }
 
 export interface Message {
@@ -45,6 +55,8 @@ export interface SocialPost {
   timestamp: number;
   likes: number;
   comments: number;
+  commentsList?: Comment[];
+  platform: 'moments' | 'weibo';
 }
 
 export interface ApiSettings {
@@ -80,6 +92,9 @@ export interface WorldState {
   currentDate: string;
   news: NewsItem[];
   tickets: Ticket[];
+  // Interaction settings
+  enableMomentsInteraction: boolean;
+  maxMomentReplies: number;
 }
 
 export type AppId = 'home' | 'wechat' | 'weibo' | 'damai' | 'news' | 'settings';

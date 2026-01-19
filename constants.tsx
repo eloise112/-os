@@ -56,5 +56,7 @@ export const INITIAL_WORLD: WorldState = {
       category: 'movie',
       image: 'https://picsum.photos/seed/movie1/300/400'
     }
-  ]
+  ],
+  enableMomentsInteraction: true,
+  maxMomentReplies: 4
 };

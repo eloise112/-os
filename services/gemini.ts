@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Character, Message, UserProfile, ApiSettings } from "../types";
+import { Character, Message, UserProfile, ApiSettings, SocialPost } from "../types";
 
 // Generic request handler for non-Gemini models (OpenAI compatible)
 const callExternalProvider = async (settings: ApiSettings, systemPrompt: string, userPrompt: string) => {
@@ -118,19 +118,23 @@ export const generateCharacterResponse = async (
   }
 };
 
-// World Building Logic
+// World Building Logic: Generate News and Posts
 export const generateDailyNewsAndSocial = async (
   worldDescription: string,
   characters: Character[],
   apiSettings: ApiSettings
 ) => {
-  const systemPrompt = "你是一个世界观生成引擎，专门基于设定生成新闻动态。";
+  const systemPrompt = "你是一个世界观生成引擎，专门基于设定生成新闻动态、微博动态（公开）和朋友圈动态（私人）。";
   const userPrompt = `
-    基于以下世界观，生成今日的3条新闻和2条角色动态。
+    基于以下世界观，生成今日的:
+    1. 3条新闻 (news)
+    2. 2条微博动态 (weiboPosts) - 语气要客气、端着、面向大众、展示形象。
+    3. 2条朋友圈动态 (momentsPosts) - 语气要放松、私密、真实、随性。
+    
     世界观: ${worldDescription}
     角色列表: ${characters.map(c => c.name).join(', ')}
     
-    输出要求为严格的 JSON 格式，包含字段: news (Array), socialPosts (Array)。
+    输出要求为严格的 JSON 格式，包含字段: news (Array), weiboPosts (Array), momentsPosts (Array)。
   `;
 
   if (apiSettings.model.startsWith('gemini')) {
@@ -157,7 +161,18 @@ export const generateDailyNewsAndSocial = async (
                   required: ["title", "content", "category"]
                 }
               },
-              socialPosts: {
+              weiboPosts: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    authorName: { type: Type.STRING },
+                    content: { type: Type.STRING }
+                  },
+                  required: ["authorName", "content"]
+                }
+              },
+              momentsPosts: {
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
@@ -169,7 +184,7 @@ export const generateDailyNewsAndSocial = async (
                 }
               }
             },
-            required: ["news", "socialPosts"]
+            required: ["news", "weiboPosts", "momentsPosts"]
           }
         }
       });
@@ -186,6 +201,102 @@ export const generateDailyNewsAndSocial = async (
       return JSON.parse(jsonStr);
     } catch (error) {
       console.error("External World Generation Error:", error);
+      return null;
+    }
+  }
+};
+
+// Interaction Logic: Generate comments/replies for a post
+export const generateInteractionForPost = async (
+  post: SocialPost,
+  characters: Character[],
+  worldDescription: string,
+  userProfile: UserProfile,
+  maxReplies: number,
+  apiSettings: ApiSettings
+) => {
+  const authorName = post.authorId === 'user' ? userProfile.name : (characters.find(c => c.id === post.authorId)?.name || "未知用户");
+  const isWeibo = post.platform === 'weibo';
+  
+  const existingCommentsText = post.commentsList && post.commentsList.length > 0 
+    ? `当前已有评论互动:\n${post.commentsList.map(c => `- ${c.authorName}${c.replyToName ? ` 回复 ${c.replyToName}` : ''}: ${c.content}`).join('\n')}`
+    : "当前尚无评论互动。";
+
+  const systemPrompt = `
+    你是一个社交媒体互动引擎。负责模拟${isWeibo ? '微博(公开)' : '朋友圈(私人)'}下方的评论互动。
+    世界观: ${worldDescription}
+    
+    ${isWeibo ? '【平台特性：微博】。互动语气要稍微礼貌或带有某种程度的“端着”的感觉，即便回复熟人也可能稍微注意形象，或者像粉丝/路人一样评论。' : '【平台特性：朋友圈】。互动语气要非常随性、亲近、真实，像老朋友在聊天。'}
+    
+    角色列表:
+    ${characters.map(c => `- ${c.name}: ${c.background}`).join('\n')}
+    
+    规则:
+    1. 生成角色对该动态的评论，或者角色之间的互相回复，或者角色回复用户。
+    2. 互动的语气必须符合角色性格。
+    3. 总共生成的**新增**评论数量(包含对话)上限为 ${maxReplies}。
+    4. 角色可以回复用户(${userProfile.name})的评论。
+    5. 不要以AI身份说话。
+    6. 输出必须为 JSON 格式。
+  `;
+
+  const userPrompt = `
+    动态正文内容:
+    作者: ${authorName}
+    平台: ${isWeibo ? '微博' : '朋友圈'}
+    正文: ${post.content}
+    
+    ${existingCommentsText}
+    
+    请根据以上内容生成新的、有趣的互动。
+    输出 JSON 格式:
+    {
+      "interactions": [
+        { "authorName": "角色名", "content": "评论内容", "replyToName": "被回复者的名字(选填)" }
+      ]
+    }
+  `;
+
+  if (apiSettings.model.startsWith('gemini')) {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      const response = await ai.models.generateContent({
+        model: apiSettings.model,
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              interactions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    authorName: { type: Type.STRING },
+                    content: { type: Type.STRING },
+                    replyToName: { type: Type.STRING }
+                  },
+                  required: ["authorName", "content"]
+                }
+              }
+            },
+            required: ["interactions"]
+          }
+        }
+      });
+      return JSON.parse(response.text || "{}");
+    } catch (error) {
+      console.error("Interaction Generation Error:", error);
+      return null;
+    }
+  } else {
+    const result = await callExternalProvider(apiSettings, systemPrompt, userPrompt);
+    try {
+      const jsonStr = result.replace(/```json|```/g, '').trim();
+      return JSON.parse(jsonStr);
+    } catch {
       return null;
     }
   }

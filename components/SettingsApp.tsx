@@ -148,23 +148,54 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
         )}
 
         {activeTab === 'world' && (
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-5">
-            <div>
-              <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block mb-2">世界观总览</label>
-              <textarea 
-                value={world.worldDescription} 
-                onChange={e => setWorld(prev => ({ ...prev, worldDescription: e.target.value }))}
-                className="w-full text-[14px] font-medium border border-gray-100 p-4 rounded-xl bg-gray-50 min-h-[220px] outline-none focus:ring-1 focus:ring-blue-500/20 leading-relaxed"
-                placeholder="描述这个世界的法则、科技水平和社会现状..."
-              />
+          <div className="space-y-6">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-5">
+              <div>
+                <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block mb-2">世界观总览</label>
+                <textarea 
+                  value={world.worldDescription} 
+                  onChange={e => setWorld(prev => ({ ...prev, worldDescription: e.target.value }))}
+                  className="w-full text-[14px] font-medium border border-gray-100 p-4 rounded-xl bg-gray-50 min-h-[180px] outline-none focus:ring-1 focus:ring-blue-500/20 leading-relaxed"
+                  placeholder="描述这个世界的法则、科技水平和社会现状..."
+                />
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <span className="text-sm font-bold text-gray-600">虚构系统时间</span>
+                <input 
+                  value={world.currentDate} 
+                  onChange={e => setWorld(prev => ({ ...prev, currentDate: e.target.value }))}
+                  className="bg-transparent text-right text-sm font-bold text-blue-600 outline-none"
+                />
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <span className="text-sm font-bold text-gray-600">虚构系统时间</span>
-              <input 
-                value={world.currentDate} 
-                onChange={e => setWorld(prev => ({ ...prev, currentDate: e.target.value }))}
-                className="bg-transparent text-right text-sm font-bold text-blue-600 outline-none"
+
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+              <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block mb-2">互动设置 (Interaction)</label>
+              <ToggleSwitch 
+                isOn={world.enableMomentsInteraction} 
+                onToggle={() => setWorld(prev => ({ ...prev, enableMomentsInteraction: !prev.enableMomentsInteraction }))}
+                label="开启朋友圈 AI 互动"
+                icon="fas fa-comments"
               />
+              <div className="flex items-center justify-between py-2 border-t border-gray-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-500 flex items-center justify-center">
+                    <i className="fas fa-reply-all"></i>
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">单帖回复上限</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max="10" 
+                    value={world.maxMomentReplies} 
+                    onChange={e => setWorld(prev => ({ ...prev, maxMomentReplies: parseInt(e.target.value) || 1 }))}
+                    className="w-12 bg-gray-100 text-center rounded py-1 text-sm font-bold outline-none"
+                  />
+                  <span className="text-xs text-gray-400">条</span>
+                </div>
+              </div>
             </div>
           </div>
         )}

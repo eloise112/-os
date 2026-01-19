@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Character, ChatSession, Message, SocialPost, UserProfile } from '../types';
+import { Character, ChatSession, Message, SocialPost, UserProfile, Comment } from '../types';
 
 interface WeChatAppProps {
   chats: Record<string, ChatSession>;
@@ -12,6 +12,7 @@ interface WeChatAppProps {
   onSendMessage: (charId: string, text: string, type?: Message['type'], amount?: number, locationName?: string) => void;
   onAddCharacter: (char: Character) => void;
   onAddPost: (content: string) => void;
+  onAddComment: (postId: string, content: string, replyToName?: string) => void;
   onBack: () => void;
 }
 
@@ -33,7 +34,7 @@ const SUGGESTED_LOCATIONS = [
   '静安寺 - 步行街'
 ];
 
-const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdateUser, onSendMessage, onAddCharacter, onAddPost, onBack, balance, posts }) => {
+const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdateUser, onSendMessage, onAddCharacter, onAddPost, onAddComment, onBack, balance, posts }) => {
   const [view, setView] = useState<WeChatView>('chats');
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -43,10 +44,22 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Moments & Posting state
+  // Moments states
   const [postInput, setPostInput] = useState('');
+  const [commentInput, setCommentInput] = useState('');
+  const [activeCommentPost, setActiveCommentPost] = useState<{ id: string, replyToName?: string } | null>(null);
 
-  // Location Picker specific states
+  // New Character state
+  const [newChar, setNewChar] = useState<Partial<Character>>({
+    name: '',
+    avatar: `https://picsum.photos/seed/${Date.now()}/200/200`,
+    background: '',
+    preferences: '',
+    storyline: '',
+    firstMessage: '你好，很高兴见到你。'
+  });
+
+  // Location Picker
   const [customLocation, setCustomLocation] = useState('');
   const [selectedLocationIdx, setSelectedLocationIdx] = useState<number | null>(null);
 
@@ -58,16 +71,13 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
     return counts;
   });
 
-  const [newCharName, setNewCharName] = useState('');
-  const [newCharBackground, setNewCharBackground] = useState('');
-  const [newCharAvatar, setNewCharAvatar] = useState(`https://picsum.photos/seed/${Date.now()}/200/200`);
-
   const [editingName, setEditingName] = useState(user.name);
   const [editingAvatar, setEditingAvatar] = useState(user.avatar);
   const [editingPersona, setEditingPersona] = useState(user.persona);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
 
   const selectedChar = useMemo(() => 
     characters.find(c => c.id === selectedCharId), 
@@ -106,6 +116,12 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
     }
   }, [chats, selectedCharId, view]);
 
+  useEffect(() => {
+    if (activeCommentPost) {
+      commentInputRef.current?.focus();
+    }
+  }, [activeCommentPost]);
+
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return { characters: [], messages: [] };
     const q = searchQuery.toLowerCase();
@@ -132,6 +148,13 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
     if (!input.trim() || !selectedCharId) return;
     onSendMessage(selectedCharId, input, 'text');
     setInput('');
+  };
+
+  const handleSendComment = () => {
+    if (!commentInput.trim() || !activeCommentPost) return;
+    onAddComment(activeCommentPost.id, commentInput, activeCommentPost.replyToName);
+    setCommentInput('');
+    setActiveCommentPost(null);
   };
 
   const handleSendSticker = (sticker: string) => {
@@ -174,19 +197,21 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
   };
 
   const handleCreateChar = () => {
-    if (!newCharName.trim()) return alert("请输入角色姓名");
-    onAddCharacter({
+    if (!newChar.name?.trim()) return alert("请输入角色姓名");
+    const char: Character = {
       id: `char-${Date.now()}`,
-      name: newCharName,
-      avatar: newCharAvatar,
-      background: newCharBackground || '这个角色暂时没有背景介绍。',
-      preferences: '暂无偏好设定',
-      storyline: '一段全新的故事即将开始...',
+      name: newChar.name,
+      avatar: newChar.avatar || `https://picsum.photos/seed/${Date.now()}/200/200`,
+      background: newChar.background || '暂无背景',
+      preferences: newChar.preferences || '暂无偏好',
+      storyline: newChar.storyline || '故事开始了...',
+      firstMessage: newChar.firstMessage || '你好。',
       perceiveWorldNews: true,
       perceiveSocialMedia: true,
       perceiveUserPersona: true
-    });
-    setNewCharName('');
+    };
+    onAddCharacter(char);
+    setNewChar({ name: '', avatar: `https://picsum.photos/seed/${Date.now()+1}/200/200`, background: '', preferences: '', storyline: '', firstMessage: '你好。' });
     setView('contacts');
   };
 
@@ -218,6 +243,73 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
     return `${Math.floor(diff / 86400000)}天前`;
   };
+
+  // --- Create Character View ---
+  if (view === 'create_char') {
+    return (
+      <div className="h-full flex flex-col bg-[#f2f2f7] animate-in slide-in-from-right duration-300">
+        <div className="p-4 pt-11 bg-white border-b border-gray-200 flex items-center justify-between shrink-0">
+          <button onClick={() => setView('chats')} className="text-gray-900 text-[16px]">取消</button>
+          <span className="font-bold text-[17px]">新建角色</span>
+          <button onClick={handleCreateChar} className="text-[#07c160] font-bold active:opacity-50">完成</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="bg-white rounded-xl p-4 flex flex-col items-center gap-4 shadow-sm">
+             <img src={newChar.avatar} className="w-20 h-20 rounded-2xl border-2 border-gray-50 shadow-sm" />
+             <button onClick={() => setNewChar({...newChar, avatar: `https://picsum.photos/seed/${Date.now()}/200/200`})} className="text-[12px] text-blue-500 font-medium">更换随机头像</button>
+          </div>
+          <div className="bg-white rounded-xl overflow-hidden shadow-sm divide-y divide-gray-50">
+            <div className="p-4 flex items-center gap-4">
+               <span className="w-16 text-[14px] text-gray-500 font-medium">姓名</span>
+               <input value={newChar.name} onChange={e => setNewChar({...newChar, name: e.target.value})} placeholder="角色姓名" className="flex-1 text-[14px] outline-none" />
+            </div>
+            <div className="p-4 flex flex-col gap-2">
+               <span className="text-[14px] text-gray-500 font-medium">背景设定 (Tavern Background)</span>
+               <textarea value={newChar.background} onChange={e => setNewChar({...newChar, background: e.target.value})} placeholder="描述角色的身份、性格、过往..." className="w-full min-h-[100px] text-[14px] outline-none resize-none bg-gray-50 p-2 rounded-lg" />
+            </div>
+            <div className="p-4 flex flex-col gap-2">
+               <span className="text-[14px] text-gray-500 font-medium">第一句话</span>
+               <textarea value={newChar.firstMessage} onChange={e => setNewChar({...newChar, firstMessage: e.target.value})} placeholder="初次见面时角色会说的话..." className="w-full text-[14px] outline-none resize-none bg-gray-50 p-2 rounded-lg" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Character Detail View ---
+  if (view === 'char_detail' && selectedChar) {
+    return (
+      <div className="h-full flex flex-col bg-[#f2f2f7] animate-in slide-in-from-right duration-300">
+        <div className="p-4 pt-11 bg-white border-b border-gray-200 flex items-center gap-3 shrink-0">
+          <button onClick={() => setView('chatting')} className="text-gray-900 active:opacity-50"><i className="fas fa-chevron-left"></i></button>
+          <span className="font-bold text-[17px] flex-1">详细资料</span>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="bg-white px-4 py-6 flex flex-col items-center gap-4 mb-3">
+             <img src={selectedChar.avatar} className="w-24 h-24 rounded-2xl shadow-md border-2 border-white object-cover" />
+             <div className="text-center">
+                <h2 className="text-xl font-bold">{selectedChar.name}</h2>
+                <p className="text-[12px] text-gray-400 mt-1">微信号: Char_{selectedChar.id.slice(-4)}</p>
+             </div>
+          </div>
+          <div className="bg-white divide-y divide-gray-50 mb-3">
+             <div className="p-4 flex flex-col gap-2">
+                <span className="text-[12px] text-gray-400 uppercase font-black tracking-widest">人设背景 (Background)</span>
+                <p className="text-[14px] text-gray-800 leading-relaxed font-medium">{selectedChar.background}</p>
+             </div>
+             <div className="p-4 flex flex-col gap-2">
+                <span className="text-[12px] text-gray-400 uppercase font-black tracking-widest">性格偏好 (Preferences)</span>
+                <p className="text-[14px] text-gray-800 leading-relaxed font-medium">{selectedChar.preferences}</p>
+             </div>
+          </div>
+          <div className="bg-white p-4 mb-10">
+             <button className="w-full bg-[#fa5151] text-white py-3 rounded-xl font-bold active:scale-95 transition-transform">删除联系人</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // --- Posting View ---
   if (view === 'posting') {
@@ -252,12 +344,12 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
   // --- Moments View ---
   if (view === 'moments') {
     return (
-      <div className="h-full flex flex-col bg-white animate-in slide-in-from-right duration-300 overflow-hidden">
+      <div className="h-full flex flex-col bg-white animate-in slide-in-from-right duration-300 overflow-hidden relative">
         <div className="absolute top-0 w-full p-4 pt-11 z-20 flex justify-between items-center text-white drop-shadow-md">
            <button onClick={() => setView('discover')} className="w-8 h-8 flex items-center justify-center rounded-full bg-black/10 active:scale-90"><i className="fas fa-chevron-left text-lg"></i></button>
            <button onClick={() => setView('posting')} className="w-8 h-8 flex items-center justify-center rounded-full bg-black/10 active:scale-90"><i className="fas fa-camera text-lg"></i></button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" onClick={() => activeCommentPost && setActiveCommentPost(null)}>
            {/* Header Cover */}
            <div className="relative mb-16 h-72">
               <img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=600" className="w-full h-full object-cover" />
@@ -297,18 +389,72 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
                                <i className={isLiked ? 'fas fa-heart' : 'far fa-heart'}></i>
                                <span>{post.likes + (isLiked ? 1 : 0)}</span>
                              </button>
-                             <button className="text-[#576b95] text-[13px] flex items-center gap-1">
+                             <button 
+                               onClick={(e) => { e.stopPropagation(); setActiveCommentPost({ id: post.id }); }}
+                               className="text-[#576b95] text-[13px] flex items-center gap-1 active:scale-110 transition-transform"
+                             >
                                <i className="far fa-comment"></i>
-                               <span>{post.comments}</span>
+                               <span>{post.commentsList?.length || 0}</span>
                              </button>
                           </div>
                        </div>
+
+                       {/* Comments Section */}
+                       {(isLiked || (post.commentsList && post.commentsList.length > 0)) && (
+                         <div className="mt-3 bg-[#f7f7f7] rounded-sm p-2 space-y-1 relative">
+                            {/* Arrow Up */}
+                            <div className="absolute -top-1.5 left-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-bottom-[6px] border-b-[#f7f7f7]"></div>
+                            
+                            {isLiked && (
+                               <div className="flex items-center gap-1.5 pb-1 border-b border-gray-100 mb-1">
+                                  <i className="far fa-heart text-[#576b95] text-[11px]"></i>
+                                  <span className="text-[#576b95] text-[12px] font-bold">{user.name}</span>
+                               </div>
+                            )}
+
+                            {post.commentsList?.map(comment => (
+                              <div 
+                                key={comment.id} 
+                                className="text-[13px] leading-snug active:bg-gray-200 transition-colors py-0.5 rounded px-1"
+                                onClick={(e) => { e.stopPropagation(); setActiveCommentPost({ id: post.id, replyToName: comment.authorName }); }}
+                              >
+                                <span className="text-[#576b95] font-bold">{comment.authorName}</span>
+                                {comment.replyToName && (
+                                  <>
+                                    <span className="text-gray-900 mx-1">回复</span>
+                                    <span className="text-[#576b95] font-bold">{comment.replyToName}</span>
+                                  </>
+                                )}
+                                <span className="text-gray-900">: {comment.content}</span>
+                              </div>
+                            ))}
+                         </div>
+                       )}
                     </div>
                  </div>
                );
              })}
            </div>
         </div>
+
+        {/* Floating Comment Bar */}
+        {activeCommentPost && (
+          <div className="absolute bottom-0 left-0 w-full bg-[#f7f7f7] border-t border-gray-200 p-2 pb-8 flex items-center gap-2 animate-in slide-in-from-bottom duration-200 z-50">
+            <input 
+              ref={commentInputRef}
+              value={commentInput}
+              onChange={e => setCommentInput(e.target.value)}
+              onKeyPress={e => e.key === 'Enter' && handleSendComment()}
+              placeholder={activeCommentPost.replyToName ? `回复 ${activeCommentPost.replyToName}:` : "评论..."}
+              className="flex-1 bg-white rounded-md p-2 outline-none text-[14px] border border-gray-200"
+            />
+            <button 
+              onClick={handleSendComment}
+              disabled={!commentInput.trim()}
+              className={`px-4 py-2 rounded text-[14px] font-bold ${commentInput.trim() ? 'bg-[#07c160] text-white' : 'bg-gray-100 text-gray-400'}`}
+            >发送</button>
+          </div>
+        )}
       </div>
     );
   }
@@ -499,7 +645,7 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
              <button onClick={() => { setShowStickers(!showStickers); setShowPlusMenu(false); }} className="text-2xl text-gray-600 active:scale-90 transition-transform"><i className="far fa-laugh"></i></button>
             <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend()} className="flex-1 bg-white rounded-md p-2 outline-none text-sm border border-gray-200" placeholder="发送消息..." />
             <button onClick={() => { setShowPlusMenu(!showPlusMenu); setShowStickers(false); }} className="text-2xl text-gray-600 active:scale-90 transition-transform"><i className="far fa-plus-square"></i></button>
-            {input.trim() && <button handleSend={handleSend} className="bg-[#07c160] text-white px-3 py-1.5 rounded text-sm font-medium">发送</button>}
+            {input.trim() && <button onClick={handleSend} className="bg-[#07c160] text-white px-3 py-1.5 rounded text-sm font-medium">发送</button>}
           </div>
 
           {showPlusMenu && (

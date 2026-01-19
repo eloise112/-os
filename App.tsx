@@ -120,7 +120,7 @@ const App: React.FC = () => {
     }, 1500);
   };
 
-  const handleSendMessage = async (charId: string, text: string, type: Message['type'] = 'text', amount?: number, locationName?: string) => {
+  const handleSendMessage = async (charId: string, text: string, type: Message['type'] = 'text', amount?: number, locationName?: string, autoReply: boolean = false) => {
     const newMessage: Message = { id: Date.now().toString(), senderId: 'user', text, type, amount, locationName, timestamp: Date.now() };
 
     setChats(prev => ({
@@ -130,22 +130,36 @@ const App: React.FC = () => {
         messages: [...(prev[charId]?.messages || []), newMessage],
         lastMessageAt: Date.now(),
         unreadCount: 0,
-        isTyping: true
+        isTyping: autoReply
       }
     }));
 
     if (type === 'transfer' && amount) setBalance(b => b - amount);
 
+    if (autoReply) {
+      await handleTriggerAIResponse(charId);
+    }
+  };
+
+  const handleTriggerAIResponse = async (charId: string) => {
+    const currentSession = chats[charId];
+    if (!currentSession || currentSession.isTyping) return;
+
+    setChats(prev => ({
+      ...prev,
+      [charId]: { ...prev[charId], isTyping: true }
+    }));
+
     const character = characters.find(c => c.id === charId)!;
     const history = (chats[charId]?.messages || []);
+    const lastUserMessage = history.filter(m => m.senderId === 'user').slice(-1)[0]?.text || "...";
     
     // Character response logic
-    // Now returns ResponseSegment[] from the model
     const segments = await generateCharacterResponse(
       character, 
-      history.concat(newMessage), 
+      history, 
       world.worldDescription, 
-      text, 
+      lastUserMessage, 
       userProfile, 
       apiConfig.chat,
       apiConfig.providerKeys
@@ -161,7 +175,6 @@ const App: React.FC = () => {
       }
 
       const segment = segments[idx];
-      // Simulate reading time + typing time based on length
       const delay = Math.min(Math.max(segment.text.length * 100, 1000), 4000);
 
       setTimeout(() => {
@@ -193,7 +206,7 @@ const App: React.FC = () => {
 
   const handleInvite = async (charId: string, ticket: Ticket) => {
     const inviteText = `我刚刚买了《${ticket.title}》的票，${ticket.date}在上海。要不要一起去？我看好位置都选好了！`;
-    await handleSendMessage(charId, inviteText);
+    await handleSendMessage(charId, inviteText, 'text', undefined, undefined, true);
   };
 
   const handleAddPost = async (content: string, platform: 'moments' | 'weibo') => {
@@ -262,7 +275,7 @@ const App: React.FC = () => {
           {activeApp === 'wechat' ? (
             <WeChatApp 
               chats={chats} characters={characters} user={userProfile} onUpdateUser={setUserProfile}
-              onSendMessage={handleSendMessage} onAddCharacter={prev => setCharacters(p => [...p, prev])}
+              onSendMessage={handleSendMessage} onTriggerAI={handleTriggerAIResponse} onAddCharacter={prev => setCharacters(p => [...p, prev])}
               onAddPost={content => handleAddPost(content, 'moments')}
               onAddComment={(id, content, reply) => handleAddComment(id, content, 'moments', reply)}
               onBack={() => setActiveApp('home')} 

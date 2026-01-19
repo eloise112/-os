@@ -10,6 +10,7 @@ interface WeChatAppProps {
   balance: number;
   posts: SocialPost[];
   onSendMessage: (charId: string, text: string, type?: Message['type'], amount?: number, locationName?: string) => void;
+  onTriggerAI: (charId: string) => void;
   onAddCharacter: (char: Character) => void;
   onAddPost: (content: string) => void;
   onAddComment: (postId: string, content: string, replyToName?: string) => void;
@@ -23,10 +24,11 @@ const EMOJIS = ['😊', '😂', '🥰', '😍', '😒', '😭', '😎', '🤔', 
 
 const PRESET_LOCATIONS = ['虹桥天地', '静安寺', '外滩18号', '梅赛德斯-奔驰文化中心', '徐家汇中心', '新天地', '武康路', '东方明珠'];
 
-const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdateUser, onSendMessage, onAddCharacter, onAddPost, onAddComment, onBack, onClearUnread, balance, posts }) => {
+const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdateUser, onSendMessage, onTriggerAI, onAddCharacter, onAddPost, onAddComment, onBack, onClearUnread, balance, posts }) => {
   const [view, setView] = useState<WeChatView>('chats');
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const [isActionMode, setIsActionMode] = useState(false);
   const [commentInput, setCommentInput] = useState('');
   const [activeCommentPost, setActiveCommentPost] = useState<{ id: string, replyToName?: string } | null>(null);
   const [showMoreTools, setShowMoreTools] = useState(false);
@@ -57,9 +59,14 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
     }
   }, [view, selectedCharId, onClearUnread]);
 
+  const messageCount = session?.messages.length || 0;
+  const isTyping = session?.isTyping || false;
+
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [chats, selectedCharId, view, session?.isTyping, session?.messages]);
+    if (view === 'chatting' && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [view, messageCount, isTyping, selectedCharId]);
 
   useEffect(() => {
     if (activeCommentPost) commentInputRef.current?.focus();
@@ -67,9 +74,14 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
 
   const handleSend = () => {
     if (!input.trim() || !selectedCharId) return;
-    onSendMessage(selectedCharId, input, 'text');
+    onSendMessage(selectedCharId, input, isActionMode ? 'action' : 'text');
     setInput('');
     setShowMoreTools(false);
+  };
+
+  const handleManualReply = () => {
+    if (!selectedCharId) return;
+    onTriggerAI(selectedCharId);
   };
 
   const handleSendEmoji = (emoji: string) => {
@@ -190,9 +202,11 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
   }
 
   if (view === 'chatting' && selectedChar) {
+    const isUserTyping = input.trim().length > 0;
+    
     return (
       <div className="h-full flex flex-col bg-[#ededed] animate-in slide-in-from-right duration-300 relative">
-        <div className="p-4 pt-11 bg-[#ededed] border-b border-gray-200 flex items-center shrink-0">
+        <div className="p-4 pt-11 bg-[#ededed] border-b border-gray-200 flex items-center shrink-0 z-10">
           <button onClick={() => setView('chats')} className="mr-4 text-gray-700"><i className="fas fa-chevron-left text-lg"></i></button>
           <div className="flex-1 text-center font-bold">
             {selectedChar.name}
@@ -201,7 +215,7 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
           <button className="w-8 text-right text-gray-700"><i className="fas fa-ellipsis-h"></i></button>
         </div>
         
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-5">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-5 scroll-smooth relative">
           {session?.messages.map(m => {
             const isUser = m.senderId === 'user';
             const isAction = m.type === 'action';
@@ -209,62 +223,79 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
             const isLocation = m.type === 'location';
             
             return (
-              <div key={m.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
-                <div className={`flex w-full ${isAction ? 'justify-center' : isUser ? 'justify-end' : 'justify-start'} items-start`}>
-                  <div className={`flex ${isAction ? 'w-full' : 'max-w-[90%]'} ${isUser ? 'flex-row-reverse' : 'flex-row'} items-start`}>
-                    {!isAction && <img src={isUser ? user.avatar : selectedChar.avatar} className="w-10 h-10 rounded-md shadow-sm shrink-0 object-cover" />}
-                    <div className={`flex flex-col items-start ${isAction ? 'w-full px-2' : ''}`}>
-                      {isAction ? (
-                        <div className="my-1 w-full bg-gray-200/50 text-gray-500 text-[9px] px-3 py-2 rounded-xl font-mono border border-gray-300/30 shadow-sm relative italic leading-relaxed">
-                          <span className="opacity-30 text-[7px] absolute -top-1.5 left-2 bg-gray-400 text-white rounded px-1 scale-75 uppercase font-bold tracking-tighter">behavior</span>
-                          {m.text}
+              <div key={m.id} className={`flex ${isAction ? 'justify-center' : isUser ? 'justify-end' : 'justify-start'} w-full`}>
+                <div className={`flex ${isAction ? 'w-full px-1' : 'max-w-[90%]'} ${isUser ? 'flex-row-reverse' : 'flex-row'} items-start`}>
+                  {!isAction && <img src={isUser ? user.avatar : selectedChar.avatar} className="w-10 h-10 rounded-md shadow-sm shrink-0 object-cover" />}
+                  <div className={`flex flex-col items-start ${isAction ? 'w-full' : ''}`}>
+                    {isAction ? (
+                      <div className="my-1 w-full bg-gray-200/50 text-gray-500 text-[8px] px-4 py-3 rounded-2xl font-mono border border-gray-300/30 shadow-sm relative italic leading-relaxed text-center">
+                        <span className="opacity-30 text-[7px] absolute -top-1.5 left-4 bg-gray-400 text-white rounded px-1 scale-75 uppercase font-bold tracking-tighter">behavior</span>
+                        {m.text}
+                      </div>
+                    ) : isTransfer ? (
+                      <div className={`mx-2 p-3 rounded-xl shadow-sm bg-orange-500 text-white w-48 flex items-center gap-3 border-2 border-white/20`}>
+                        <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl">
+                           <i className="fas fa-hand-holding-usd"></i>
                         </div>
-                      ) : isTransfer ? (
-                        <div className={`mx-2 p-3 rounded-xl shadow-sm bg-orange-500 text-white w-48 flex items-center gap-3 border-2 border-white/20`}>
-                          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl">
-                             <i className="fas fa-hand-holding-usd"></i>
-                          </div>
-                          <div className="flex-1">
-                             <div className="text-[15px] font-bold">¥ {m.amount?.toFixed(2)}</div>
-                             <div className="text-[10px] opacity-80">点击领取转账</div>
-                          </div>
+                        <div className="flex-1">
+                           <div className="text-[15px] font-bold">¥ {m.amount?.toFixed(2)}</div>
+                           <div className="text-[10px] opacity-80">点击领取转账</div>
                         </div>
-                      ) : isLocation ? (
-                        <div className={`mx-2 p-0 rounded-xl shadow-sm bg-white overflow-hidden w-56 border border-gray-100`}>
-                           <div className="h-24 bg-blue-50 flex items-center justify-center text-blue-300">
-                              <i className="fas fa-map-marked-alt text-4xl"></i>
-                           </div>
-                           <div className="p-2">
-                              <div className="text-[13px] font-bold text-gray-800 truncate">{m.locationName}</div>
-                              <div className="text-[10px] text-gray-400">上海市 · 实时定位</div>
-                           </div>
-                        </div>
-                      ) : (
-                        <div className={`mx-2 p-2.5 rounded-lg text-[14px] shadow-sm ${isUser ? 'bg-[#95ec69]' : 'bg-white'}`}>
-                          {m.text}
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    ) : isLocation ? (
+                      <div className={`mx-2 p-0 rounded-xl shadow-sm bg-white overflow-hidden w-56 border border-gray-100`}>
+                         <div className="h-24 bg-blue-50 flex items-center justify-center text-blue-300">
+                            <i className="fas fa-map-marked-alt text-4xl"></i>
+                         </div>
+                         <div className="p-2">
+                            <div className="text-[13px] font-bold text-gray-800 truncate">{m.locationName}</div>
+                            <div className="text-[10px] text-gray-400">上海市 · 实时定位</div>
+                         </div>
+                      </div>
+                    ) : (
+                      <div className={`mx-2 p-2.5 rounded-lg text-[14px] shadow-sm ${isUser ? 'bg-[#95ec69]' : 'bg-white'}`}>
+                        {m.text}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             );
           })}
+          <div className="h-10 w-full"></div>
         </div>
 
-        <div className="bg-[#f7f7f7] border-t p-2 flex flex-col items-center gap-2 shrink-0">
+        {/* Manual Reply Floating Button */}
+        {!session?.isTyping && (
+          <button 
+            onClick={handleManualReply}
+            className="absolute bottom-24 right-4 bg-white/90 backdrop-blur-md text-[#07c160] px-4 py-2 rounded-full shadow-lg border border-gray-200 font-bold text-[13px] z-20 active:scale-95 transition-all flex items-center gap-2"
+          >
+             <i className="fas fa-magic"></i> 回复
+          </button>
+        )}
+
+        <div className="bg-[#f7f7f7] border-t p-2 flex flex-col items-center gap-2 shrink-0 z-30">
           <div className="w-full flex items-center gap-2 px-1">
-            <button className="text-gray-600 text-2xl"><i className="far fa-keyboard"></i></button>
+            <button 
+              onClick={() => setIsActionMode(!isActionMode)}
+              className={`w-10 h-8 flex items-center justify-center rounded-md transition-colors ${isActionMode ? 'bg-[#07c160] text-white shadow-inner' : 'text-gray-400 bg-white border border-gray-200'}`}
+            >
+              <i className="fas fa-running text-lg"></i>
+            </button>
             <input 
               value={input} 
               onChange={e => setInput(e.target.value)} 
               onKeyPress={e => e.key === 'Enter' && handleSend()} 
-              onFocus={() => setShowMoreTools(false)}
-              className="flex-1 bg-white rounded-md p-2 outline-none text-sm border border-gray-300" 
-              placeholder="发送消息..." 
+              onFocus={() => {
+                setShowMoreTools(false);
+                setTimeout(() => { if(scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 300);
+              }}
+              className={`flex-1 bg-white rounded-md p-2 outline-none text-sm border transition-colors ${isActionMode ? 'border-[#07c160] bg-green-50/20' : 'border-gray-300'}`} 
+              placeholder={isActionMode ? "写下你的动作描写..." : "发送消息..."} 
             />
             <button onClick={() => { setShowMoreTools(!showMoreTools); setToolTab('emoji'); }} className="text-gray-600 text-2xl"><i className="far fa-smile"></i></button>
-            {input.trim() ? (
+            {isUserTyping ? (
               <button onClick={handleSend} className="bg-[#07c160] text-white px-4 py-1.5 rounded-md font-bold text-[14px]">发送</button>
             ) : (
               <button onClick={() => { setShowMoreTools(!showMoreTools); setToolTab('tools'); }} className="text-gray-600 text-2xl"><i className="far fa-plus-square"></i></button>
@@ -314,7 +345,7 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
         {/* Location Picker Modal */}
         {showLocationPicker && (
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm z-[210] flex items-end">
-             <div className="bg-white rounded-t-3xl w-full p-6 animate-in slide-in-from-bottom duration-300 space-y-4 max-h-[85%] flex flex-col">
+             <div className="bg-white rounded-t-3xl w-full p-6 animate-in slide-in-from-bottom duration-300 space-y-4 max-h-[85%] flex flex-col shadow-2xl">
                 <div className="flex justify-between items-center mb-2">
                    <h3 className="font-black text-lg">选择位置</h3>
                    <button onClick={() => setShowLocationPicker(false)} className="text-gray-400 active:scale-90"><i className="fas fa-times text-xl"></i></button>
@@ -333,11 +364,11 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
                    )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-1">
+                <div className="flex-1 overflow-y-auto space-y-1 pr-1">
                    {customLocation.trim() && (
                       <button 
                         onClick={() => handleSendLocation(customLocation)}
-                        className="w-full text-left p-4 rounded-xl bg-blue-50 flex items-center gap-3 border border-blue-100 animate-in fade-in duration-200"
+                        className="w-full text-left p-4 rounded-xl bg-blue-50 flex items-center gap-3 border border-blue-100 animate-in fade-in duration-200 mb-2"
                       >
                          <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">
                             <i className="fas fa-plus"></i>

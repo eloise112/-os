@@ -14,8 +14,7 @@ export const INITIAL_CHARACTERS: Character[] = [
     perceiveSocialMedia: true,
     perceiveUserPersona: true,
     momentsFrequency: 'low',
-    weiboFrequency: 'medium',
-    proactiveTicketing: true
+    weiboFrequency: 'medium'
   },
   {
     id: 'char2',
@@ -28,8 +27,7 @@ export const INITIAL_CHARACTERS: Character[] = [
     perceiveSocialMedia: true,
     perceiveUserPersona: true,
     momentsFrequency: 'high',
-    weiboFrequency: 'high',
-    proactiveTicketing: false
+    weiboFrequency: 'high'
   }
 ];
 

@@ -15,7 +15,9 @@ export interface Character {
   // Behavioral settings
   momentsFrequency?: 'none' | 'low' | 'medium' | 'high';
   weiboFrequency?: 'none' | 'low' | 'medium' | 'high';
-  proactiveTicketing?: boolean;
+  proactiveMessageFrequency?: 'none' | 'low' | 'medium' | 'high';
+  proactiveDateFrequency?: 'none' | 'low' | 'medium' | 'high';
+  allowVirtualTransfer?: boolean;
 }
 
 export interface UserProfile {

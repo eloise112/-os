@@ -14,6 +14,7 @@ interface SettingsAppProps {
   onRefreshMoments: () => Promise<void>;
   onRefreshWeibo: () => Promise<void>;
   onRefreshTickets: () => Promise<void>;
+  onRefreshAll: () => Promise<void>;
   loadingStep: string;
   onBack: () => void;
 }
@@ -67,7 +68,7 @@ const FrequencySelector: React.FC<{ value: Character['momentsFrequency'], onChan
 
 const SettingsApp: React.FC<SettingsAppProps> = ({ 
   characters, setCharacters, world, setWorld, apiConfig, setApiConfig, 
-  onRefreshNews, onRefreshHot, onRefreshMoments, onRefreshWeibo, onRefreshTickets, loadingStep, onBack 
+  onRefreshNews, onRefreshHot, onRefreshMoments, onRefreshWeibo, onRefreshTickets, onRefreshAll, loadingStep, onBack 
 }) => {
   const [activeTab, setActiveTab] = useState<'chars' | 'world' | 'api'>('chars');
   const [internalLoading, setInternalLoading] = useState<string | null>(null);
@@ -76,7 +77,7 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
 
   const handleRefreshAction = async (type: string, fn: () => Promise<void>) => {
     setInternalLoading(type);
-    try { await fn(); } catch (e) { alert("更新失败，请检查网络或API配置"); }
+    try { await fn(); } catch (e) { /* Error is handled at App level */ }
     setInternalLoading(null);
   };
 
@@ -121,7 +122,9 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
       perceiveUserPersona: true,
       momentsFrequency: 'medium',
       weiboFrequency: 'low',
-      proactiveTicketing: false
+      proactiveMessageFrequency: 'none',
+      proactiveDateFrequency: 'none',
+      allowVirtualTransfer: false
     });
   };
 
@@ -176,6 +179,7 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
               />
             </div>
           </div>
+          
           <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
             <div className="space-y-1">
               <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">角色姓名</label>
@@ -188,7 +192,7 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">身份背景</label>
+              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">身份背景 (Background)</label>
               <textarea 
                 value={editingChar.background} 
                 onChange={e => setEditingChar({ ...editingChar, background: e.target.value })}
@@ -196,19 +200,57 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
                 placeholder="描述角色的社会地位、性格、往事..."
               />
             </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">性格喜好 (Preferences)</label>
+              <textarea 
+                value={editingChar.preferences} 
+                onChange={e => setEditingChar({ ...editingChar, preferences: e.target.value })}
+                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300 min-h-[60px]"
+                placeholder="角色喜欢什么、讨厌什么、习惯..."
+              />
+            </div>
           </div>
+
           <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">行为偏好 (Behavior)</label>
-            <FrequencySelector 
-              label="朋友圈发布频率" 
-              value={editingChar.momentsFrequency} 
-              onChange={v => setEditingChar({ ...editingChar, momentsFrequency: v })} 
-            />
-            <FrequencySelector 
-              label="微博发布频率" 
-              value={editingChar.weiboFrequency} 
-              onChange={v => setEditingChar({ ...editingChar, weiboFrequency: v })} 
-            />
+             <div className="flex justify-between items-center">
+                <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">当前剧 (Current Storyline)</label>
+                <span className="text-[9px] text-blue-500 font-bold bg-blue-50 px-2 py-0.5 rounded-full">每20轮AI自动更新</span>
+             </div>
+             <textarea 
+                value={editingChar.storyline} 
+                onChange={e => setEditingChar({ ...editingChar, storyline: e.target.value })}
+                className="w-full bg-gray-50 border border-gray-100 p-3 rounded-xl text-sm outline-none focus:border-blue-300 min-h-[100px] leading-relaxed"
+                placeholder="目前两人正处于什么样的剧情阶段？"
+              />
+              <p className="text-[10px] text-gray-400 italic">手动编辑可强制引导后续剧情发展。</p>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">世界观感知 (Awareness)</label>
+            <ToggleSwitch isOn={!!editingChar.perceiveWorldNews} onToggle={() => setEditingChar({...editingChar, perceiveWorldNews: !editingChar.perceiveWorldNews})} label="感知世界新闻" icon="fas fa-globe" color="bg-orange-500" />
+            <ToggleSwitch isOn={!!editingChar.perceiveSocialMedia} onToggle={() => setEditingChar({...editingChar, perceiveSocialMedia: !editingChar.perceiveSocialMedia})} label="关注用户朋友圈" icon="fas fa-camera" color="bg-green-500" />
+            <ToggleSwitch isOn={!!editingChar.perceiveUserPersona} onToggle={() => setEditingChar({...editingChar, perceiveUserPersona: !editingChar.perceiveUserPersona})} label="深入了解用户背景" icon="fas fa-user-shield" color="bg-purple-500" />
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
+            <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest block ml-1">行为偏好 (Behaviors)</label>
+            <FrequencySelector label="朋友圈发布频率" value={editingChar.momentsFrequency} onChange={v => setEditingChar({ ...editingChar, momentsFrequency: v })} />
+            <FrequencySelector label="微博发布频率" value={editingChar.weiboFrequency} onChange={v => setEditingChar({ ...editingChar, weiboFrequency: v })} />
+            <FrequencySelector label="主动发消息频率" value={editingChar.proactiveMessageFrequency} onChange={v => setEditingChar({ ...editingChar, proactiveMessageFrequency: v })} />
+            <FrequencySelector label="主动发起约会频率" value={editingChar.proactiveDateFrequency} onChange={v => setEditingChar({ ...editingChar, proactiveDateFrequency: v })} />
+            
+            <div className="pt-2">
+              <ToggleSwitch isOn={!!editingChar.allowVirtualTransfer} onToggle={() => setEditingChar({...editingChar, allowVirtualTransfer: !editingChar.allowVirtualTransfer})} label="允许角色调用转账卡片" icon="fas fa-hand-holding-usd" color="bg-yellow-500" />
+            </div>
+          </div>
+
+          <div className="pt-2 pb-10">
+            <button 
+              onClick={() => handleDeleteChar(editingChar.id!)}
+              className="w-full bg-white text-red-500 p-4 rounded-xl shadow-sm font-bold text-sm active:bg-red-50 transition-colors"
+            >
+              删除该角色
+            </button>
           </div>
         </div>
       </div>
@@ -247,24 +289,32 @@ const SettingsApp: React.FC<SettingsAppProps> = ({
               )}
 
               <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => handleRefreshAction('all', onRefreshAll)} disabled={isLoading} className="bg-gradient-to-br from-indigo-600 to-blue-500 col-span-2 p-5 rounded-2xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-blue-100">
+                   <i className={`fas fa-sync-alt text-white text-xl ${isLoading ? 'animate-spin' : ''}`}></i>
+                   <span className="text-[13px] font-black text-white">一键全量更新世界线</span>
+                   <p className="text-[9px] text-white/70 italic">同步刷新新闻、票务、微博及热搜</p>
+                </button>
+                
+                <div className="col-span-2 border-t border-gray-100 my-2"></div>
+                
                 <button onClick={() => handleRefreshAction('news', onRefreshNews)} disabled={isLoading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50">
                    <i className={`fas fa-newspaper text-red-500`}></i>
-                   <span className="text-[11px] font-bold text-gray-600">分步刷新新闻</span>
+                   <span className="text-[11px] font-bold text-gray-600">刷新新闻</span>
                 </button>
                 <button onClick={() => handleRefreshAction('tickets', onRefreshTickets)} disabled={isLoading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50">
                    <i className={`fas fa-ticket-alt text-pink-500`}></i>
-                   <span className="text-[11px] font-bold text-gray-600">分步刷新票务</span>
+                   <span className="text-[11px] font-bold text-gray-600">刷新票务</span>
                 </button>
                 <button onClick={() => handleRefreshAction('weibo', onRefreshWeibo)} disabled={isLoading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50 col-span-2">
                    <i className={`fab fa-weibo text-orange-500`}></i>
-                   <span className="text-[11px] font-bold text-gray-600">全面刷新微博 (3阶段)</span>
+                   <span className="text-[11px] font-bold text-gray-600">刷新微博 (含热搜)</span>
                 </button>
                 <button onClick={() => handleRefreshAction('moments', onRefreshMoments)} disabled={isLoading} className="bg-gray-50 p-4 rounded-xl flex flex-col items-center gap-2 active:scale-95 transition-all disabled:opacity-50 col-span-2">
                    <i className={`fas fa-camera text-green-500`}></i>
                    <span className="text-[11px] font-bold text-gray-600">刷新朋友圈</span>
                 </button>
               </div>
-              <p className="text-[9px] text-gray-400 px-1 leading-relaxed italic">* 为了模拟真实更新感，每阶段更新后会停顿 15 秒，请耐心等待。</p>
+              <p className="text-[9px] text-gray-400 px-1 leading-relaxed italic">* 为了模拟真实更新感，每阶段更新后会停顿 15 秒。您可以切回桌面或其它 App，更新将在后台持续运行。</p>
             </div>
             <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
               <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest block">基础世界观描述</label>

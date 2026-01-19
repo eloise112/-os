@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Character, Message, UserProfile, ApiSettings, SocialPost, ApiConfig, Ticket } from "../types";
 
@@ -118,7 +119,6 @@ export const generateCharacterResponse = async (
           }
         }
       });
-      // Correctly access .text property (not a method)
       const parsed = JSON.parse(response.text || '{"segments": []}');
       return parsed.segments || [{ type: 'speech', text: '……' }];
     } catch (error) {
@@ -132,6 +132,51 @@ export const generateCharacterResponse = async (
       return parsed.segments || [{ type: 'speech', text: '……' }];
     } catch (error) {
       return [{ type: 'speech', text: '网络连接失败。' }];
+    }
+  }
+};
+
+export const generateStorylineSummary = async (
+  character: Character,
+  history: Message[],
+  userProfile: UserProfile,
+  apiSettings: ApiSettings,
+  providerKeys: ApiConfig['providerKeys']
+): Promise<string> => {
+  const contextHistory = history.slice(-40).map(m => 
+    `${m.senderId === 'user' ? userProfile.name : character.name}: ${m.text}`
+  ).join('\n');
+
+  const systemPrompt = `
+    你是一个剧情总结专家。
+    请基于以下角色背景以及他们最近的对话历史，总结当前的“剧情进度”或“关系状态”。
+    总结应当简洁（约50-100字），描述当前发生了什么、两人关系的变化以及接下来的潜在导向。
+
+    角色名: ${character.name}
+    原背景: ${character.background}
+    原剧情设定: ${character.storyline}
+    
+    输出要求：
+    直接返回一段总结文本，不要包含JSON或任何其他格式。
+  `;
+
+  if (apiSettings.model.startsWith('gemini')) {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `对话历史:\n${contextHistory}\n\n请总结最新剧情。`,
+        config: { systemInstruction: systemPrompt }
+      });
+      return response.text || character.storyline;
+    } catch (error) {
+      return character.storyline;
+    }
+  } else {
+    try {
+      return await callExternalProvider(apiSettings, providerKeys, systemPrompt, `对话历史:\n${contextHistory}\n\n请总结最新剧情。`);
+    } catch (e) {
+      return character.storyline;
     }
   }
 };
@@ -164,10 +209,8 @@ export const generateWorldNewsItems = async (worldDescription: string, apiSettin
           }
         }
       });
-      // Correctly access .text property
       return JSON.parse(response.text || "[]");
     } catch (e) {
-      console.error("News Generation Error:", e);
       return [];
     }
   } else {
@@ -207,10 +250,8 @@ export const generateWorldHotSearches = async (worldDescription: string, apiSett
           }
         }
       });
-      // Correctly access .text property
       return JSON.parse(response.text || "[]");
     } catch (e) {
-      console.error("Hot Search Generation Error:", e);
       return [];
     }
   } else {
@@ -260,10 +301,8 @@ export const generateWorldTickets = async (worldDescription: string, apiSettings
           }
         }
       });
-      // Correctly access .text property
       return JSON.parse(response.text || "[]");
     } catch (e) {
-      console.error("Ticket Generation Error:", e);
       return [];
     }
   } else {
@@ -322,10 +361,8 @@ export const generateWorldSocialPosts = async (platform: 'weibo' | 'moments', wo
           }
         }
       });
-      // Correctly access .text property
       return JSON.parse(response.text || "[]");
     } catch (e) {
-      console.error("Social Post Generation Error:", e);
       return [];
     }
   } else {
@@ -380,10 +417,8 @@ export const generateRecommendedSocialPosts = async (worldDescription: string, a
           }
         }
       });
-      // Correctly access .text property
       return JSON.parse(response.text || "[]");
     } catch (e) {
-      console.error("Recommended Posts Error:", e);
       return [];
     }
   } else {
@@ -432,8 +467,6 @@ export const generateInteractionForPost = async (
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-      // FIX: Corrected model assignment; avoid using ai.models.get with string as it expects an object.
-      // Use the model provided in the settings as the primary choice.
       const response = await ai.models.generateContent({
         model: apiSettings.model,
         contents: userPrompt,
@@ -460,10 +493,8 @@ export const generateInteractionForPost = async (
           }
         }
       });
-      // Correctly access .text property
       return JSON.parse(response.text || "{\"interactions\": []}");
     } catch (e) {
-      console.error("Gemini Interaction Error:", e);
       return { interactions: [] };
     }
   } else {

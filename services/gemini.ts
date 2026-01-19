@@ -2,6 +2,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Character, Message, UserProfile, ApiSettings, SocialPost, ApiConfig } from "../types";
 
+export interface ResponseSegment {
+  type: 'speech' | 'action';
+  text: string;
+}
+
 // Generic request handler for non-Gemini models (OpenAI compatible)
 const callExternalProvider = async (settings: ApiSettings, providerKeys: ApiConfig['providerKeys'], systemPrompt: string, userPrompt: string) => {
   const urlMap: Record<string, string> = {
@@ -33,7 +38,8 @@ const callExternalProvider = async (settings: ApiSettings, providerKeys: ApiConf
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.8
+      temperature: 0.8,
+      response_format: { type: 'json_object' }
     })
   });
 
@@ -50,7 +56,7 @@ export const generateCharacterResponse = async (
   userProfile: UserProfile,
   apiSettings: ApiSettings,
   providerKeys: ApiConfig['providerKeys']
-) => {
+): Promise<ResponseSegment[]> => {
   const contextHistory = history.slice(-20).map(m => 
     `${m.senderId === 'user' ? userProfile.name : character.name}: ${m.text}`
   ).join('\n');
@@ -88,11 +94,27 @@ export const generateCharacterResponse = async (
     ${personaAwareness}
     ${socialAwareness}
     ${behavioralTraits}
-    你的回复应该是口语化的、符合角色性格的。你可以使用括号表达动作或心理。
+    你的回复应该是口语化的、符合角色性格的。
     不要以AI的身份说话。保持人设。
+
+    **结构化输出指令**:
+    为了模拟真人发微信的效果并支持高级渲染，请将你的回复拆分成多个片段。
+    输出必须是一个 JSON 对象，包含一个名为 "segments" 的数组。
+    数组中的每个元素必须包含:
+    - "type": 值为 "speech" (对话) 或 "action" (动作/心理描写/环境描写)
+    - "text": 对应的内容。动作内容不要带括号。
+
+    示例:
+    {
+      "segments": [
+        { "type": "action", "text": "沈逸放下手中的咖啡杯，抬头看向你" },
+        { "type": "speech", "text": "你来得比我想象中要早。" },
+        { "type": "action", "text": "他嘴角露出一丝不易察觉的微笑" }
+      ]
+    }
   `;
 
-  const userPrompt = `${userProfile.name}说: ${userMessage}\n\n请回复:`;
+  const userPrompt = `${userProfile.name}说: ${userMessage}\n\n请以JSON格式回复。`;
 
   if (apiSettings.model.startsWith('gemini')) {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -100,24 +122,47 @@ export const generateCharacterResponse = async (
       const response = await ai.models.generateContent({
         model: apiSettings.model,
         contents: `对话历史:\n${contextHistory}\n\n${userPrompt}`,
-        config: { systemInstruction: systemPrompt, temperature: 0.8 }
+        config: { 
+          systemInstruction: systemPrompt, 
+          temperature: 0.8,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              segments: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    type: { type: Type.STRING, enum: ["speech", "action"] },
+                    text: { type: Type.STRING }
+                  },
+                  required: ["type", "text"]
+                }
+              }
+            },
+            required: ["segments"]
+          }
+        }
       });
-      return response.text || "……";
+      const parsed = JSON.parse(response.text || '{"segments": []}');
+      return parsed.segments || [{ type: 'speech', text: '……' }];
     } catch (error) {
       console.error("Gemini Error:", error);
-      return "系统错误：无法连接到角色的心。";
+      return [{ type: 'speech', text: '系统错误：无法连接到角色的心。' }];
     }
   } else {
     try {
       const result = await callExternalProvider(apiSettings, providerKeys, systemPrompt, `对话历史:\n${contextHistory}\n\n${userPrompt}`);
-      return result || "……";
+      const parsed = JSON.parse(result || '{"segments": []}');
+      return parsed.segments || [{ type: 'speech', text: '……' }];
     } catch (error) {
-      return "网络连接失败。";
+      return [{ type: 'speech', text: '网络连接失败。' }];
     }
   }
 };
 
-// NEWS GENERATION
+// ... existing code for other generation functions ...
 export const generateWorldNewsItems = async (worldDescription: string, apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys']) => {
   const systemPrompt = "你是一个世界观生成引擎，专门生成基于设定背景的新闻报道。";
   const userPrompt = `基于以下世界观，生成3条今日头条新闻。\n世界观: ${worldDescription}\n输出要求为 JSON 数组。`;
@@ -155,7 +200,6 @@ export const generateWorldNewsItems = async (worldDescription: string, apiSettin
   }
 };
 
-// HOT SEARCH GENERATION
 export const generateWorldHotSearches = async (worldDescription: string, apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys']) => {
   const systemPrompt = "你是一个世界观生成引擎，专门生成微博风格的热搜榜单。";
   const userPrompt = `基于以下世界观，生成5条当前最火的热搜话题。\n世界观: ${worldDescription}\n输出要求为 JSON 数组。`;
@@ -193,7 +237,6 @@ export const generateWorldHotSearches = async (worldDescription: string, apiSett
   }
 };
 
-// SOCIAL POST GENERATION
 export const generateWorldSocialPosts = async (platform: 'weibo' | 'moments', worldDescription: string, characters: Character[], apiSettings: ApiSettings, providerKeys: ApiConfig['providerKeys']) => {
   const isWeibo = platform === 'weibo';
   const systemPrompt = `你是一个世界观生成引擎，专门生成角色在${isWeibo ? '微博(端着、公开)' : '朋友圈(随性、私人)'}发布的动态。`;
@@ -231,7 +274,6 @@ export const generateWorldSocialPosts = async (platform: 'weibo' | 'moments', wo
   }
 };
 
-// Interaction Logic
 export const generateInteractionForPost = async (
   post: SocialPost,
   characters: Character[],

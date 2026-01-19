@@ -49,7 +49,7 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [chats, selectedCharId, view, session?.isTyping]);
+  }, [chats, selectedCharId, view, session?.isTyping, session?.messages]);
 
   useEffect(() => {
     if (activeCommentPost) commentInputRef.current?.focus();
@@ -169,11 +169,24 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-5">
           {session?.messages.map(m => {
             const isUser = m.senderId === 'user';
+            const isAction = m.type === 'action';
+            
             return (
-              <div key={m.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                <div className={`flex max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <img src={isUser ? user.avatar : selectedChar.avatar} className="w-10 h-10 rounded-md shadow-sm shrink-0 object-cover" />
-                  <div className={`mx-2 p-2.5 rounded-lg text-[14px] shadow-sm ${isUser ? 'bg-[#95ec69]' : 'bg-white'}`}>{m.text}</div>
+              <div key={m.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full`}>
+                <div className={`flex max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'} items-start`}>
+                  {!isAction && <img src={isUser ? user.avatar : selectedChar.avatar} className="w-10 h-10 rounded-md shadow-sm shrink-0 object-cover" />}
+                  <div className="flex flex-col items-start">
+                    {isAction ? (
+                      <div className="mx-12 my-2 bg-gray-200/60 text-gray-500 text-[12px] px-3 py-1.5 rounded-md font-mono border border-gray-300/30 shadow-sm relative italic">
+                        <span className="opacity-40 text-[10px] absolute -top-1.5 -left-1 bg-gray-300 text-white rounded px-1 scale-75 uppercase font-bold tracking-tighter">behavior</span>
+                        {m.text}
+                      </div>
+                    ) : (
+                      <div className={`mx-2 p-2.5 rounded-lg text-[14px] shadow-sm ${isUser ? 'bg-[#95ec69]' : 'bg-white'}`}>
+                        {m.text}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -216,7 +229,9 @@ const WeChatApp: React.FC<WeChatAppProps> = ({ chats, characters, user, onUpdate
                   </span>
                   {s?.lastMessageAt && <span className="text-[11px] text-gray-400">{new Date(s.lastMessageAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>}
                 </div>
-                <div className="text-[14px] text-gray-400 truncate">{lastMsg ? lastMsg.text : "点击聊天..."}</div>
+                <div className="text-[14px] text-gray-400 truncate">
+                  {lastMsg ? (lastMsg.type === 'action' ? `[动作] ${lastMsg.text}` : lastMsg.text) : "点击聊天..."}
+                </div>
               </div>
             </button>
           );

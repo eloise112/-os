@@ -38,7 +38,7 @@ export interface Message {
   id: string;
   senderId: string;
   text: string;
-  type: 'text' | 'image' | 'transfer' | 'sticker' | 'location';
+  type: 'text' | 'image' | 'transfer' | 'sticker' | 'location' | 'action';
   timestamp: number;
   amount?: number;
   locationName?: string;

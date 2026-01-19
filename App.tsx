@@ -140,7 +140,8 @@ const App: React.FC = () => {
     const history = (chats[charId]?.messages || []);
     
     // Character response logic
-    const fullResponse = await generateCharacterResponse(
+    // Now returns ResponseSegment[] from the model
+    const segments = await generateCharacterResponse(
       character, 
       history.concat(newMessage), 
       world.worldDescription, 
@@ -150,15 +151,8 @@ const App: React.FC = () => {
       apiConfig.providerKeys
     );
 
-    // Split logic: split by common sentence delimiters but keep them
-    const segments = fullResponse.split(/([。！？…\n]+)/).filter(s => s.trim().length > 0);
-    const combinedSegments: string[] = [];
-    for (let i = 0; i < segments.length; i += 2) {
-      combinedSegments.push((segments[i] + (segments[i + 1] || '')).trim());
-    }
-
     const sendSegment = async (idx: number) => {
-      if (idx >= combinedSegments.length) {
+      if (idx >= segments.length) {
         setChats(prev => ({
           ...prev,
           [charId]: { ...prev[charId], isTyping: false }
@@ -166,12 +160,18 @@ const App: React.FC = () => {
         return;
       }
 
-      const segmentText = combinedSegments[idx];
-      // Simulate reading time + typing time
-      const delay = Math.min(Math.max(segmentText.length * 150, 1500), 5000);
+      const segment = segments[idx];
+      // Simulate reading time + typing time based on length
+      const delay = Math.min(Math.max(segment.text.length * 100, 1000), 4000);
 
       setTimeout(() => {
-        const aiMessage: Message = { id: (Date.now() + idx).toString(), senderId: charId, text: segmentText, type: 'text', timestamp: Date.now() };
+        const aiMessage: Message = { 
+          id: (Date.now() + idx).toString(), 
+          senderId: charId, 
+          text: segment.text, 
+          type: segment.type === 'action' ? 'action' : 'text', 
+          timestamp: Date.now() 
+        };
         
         setChats(prev => ({
           ...prev,
@@ -180,7 +180,7 @@ const App: React.FC = () => {
             messages: [...(prev[charId]?.messages || []), aiMessage],
             lastMessageAt: Date.now(),
             unreadCount: (activeApp === 'wechat' ? 0 : (prev[charId]?.unreadCount || 0) + 1),
-            isTyping: (idx < combinedSegments.length - 1)
+            isTyping: (idx < segments.length - 1)
           }
         }));
 
